@@ -1,0 +1,20 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# generated data and checkpoints — regenerate with producer.py
+data/*.jsonl
+data/*.json
+data/raw/
+spark-warehouse/
+checkpoint/
+metastore_db/
+derby.log
+
+# jars pulled by spark-submit --packages
+jars/
+
+# keep results and figures — they are the deliverable
+!results/**/*.csv
+!docs/figures/*.png
