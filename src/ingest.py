@@ -16,10 +16,10 @@ spark = (SparkSession.builder
     .config("spark.jars.packages", "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.10.0")
     # Catalog setup
     .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
-    .config("spark.sql.catalog.lakehouse", "org.apache.iceberg.spark.SparkCatalog")
-    .config("spark.sql.catalog.lakehouse.type", "hive")
-    .config("spark.sql.catalog.lakehouse.uri", METASTORE_URL)
-    .config("spark.sql.catalog.lakehouse.warehouse", f"{HDFS_URL}/warehouse")
+    .config("spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog")
+    .config("spark.sql.catalog.spark_catalog.type", "hive")
+    .config("spark.sql.catalog.spark_catalog.uri", METASTORE_URL)
+    .config("spark.sql.catalog.spark_catalog.warehouse", f"{HDFS_URL}/warehouse")
     .getOrCreate())
 
 # Make sure we don't spam the console too much
@@ -49,13 +49,11 @@ CDC_SCHEMA = StructType([
     ]), True)
 ])
 
-# Initialize the target Iceberg table if it doesn't exist
-spark.sql(f"""
-CREATE DATABASE IF NOT EXISTS lakehouse
-""")
+# Initialize the target Iceberg namespace and table
+spark.sql("CREATE NAMESPACE IF NOT EXISTS default")
 
 spark.sql(f"""
-CREATE TABLE IF NOT EXISTS lakehouse.orders (
+CREATE TABLE IF NOT EXISTS default.orders (
     order_id     STRING,
     customer_id  STRING,
     status       STRING,
@@ -104,28 +102,24 @@ def process_batch(df, batch_id):
         "CAST(payload.updated_at AS TIMESTAMP) as updated_at"
     )
 
-    # Deduplicate: sort by ts_ms descending, pick first per order_id
-    # Spark SQL doesn't support Window functions natively in Streaming without watermark, 
-    # but inside foreachBatch we are dealing with a static DataFrame!
-    parsed_df.createOrReplaceTempView("batch_updates_raw")
-    
-    deduped_df = spark.sql("""
-        SELECT * FROM (
-            SELECT *, ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY ts_ms DESC) as rn
-            FROM batch_updates_raw
-        ) WHERE rn = 1
-    """).drop("rn", "ts_ms")
-    
-    deduped_df.createOrReplaceTempView("batch_updates")
+    from pyspark.sql.window import Window
+    import pyspark.sql.functions as F
 
-    # Perform MERGE INTO Iceberg
+    # Deduplicate: sort by ts_ms descending, pick first per order_id
+    windowSpec = Window.partitionBy("order_id").orderBy(F.col("ts_ms").desc())
+    deduped_df = parsed_df.withColumn("rn", F.row_number().over(windowSpec)) \
+                          .filter("rn = 1").drop("rn")
+    
+    # We must explicitly use global_temp to bypass Iceberg catalog resolution issues for temp views
+    deduped_df.createOrReplaceGlobalTempView("batch_updates")
+    
     spark.sql("""
-        MERGE INTO lakehouse.orders t
-        USING batch_updates s
+        MERGE INTO default.orders t
+        USING global_temp.batch_updates s
         ON t.order_id = s.order_id
         WHEN MATCHED AND s._op = 'd' THEN DELETE
         WHEN MATCHED AND s._op IN ('u', 'c') THEN UPDATE SET *
-        WHEN NOT MATCHED AND s._op IN ('c', 'u') THEN INSERT *
+        WHEN NOT MATCHED AND s._op IN ('u', 'c') THEN INSERT *
     """)
     print(f"Successfully merged batch {batch_id}.")
 
