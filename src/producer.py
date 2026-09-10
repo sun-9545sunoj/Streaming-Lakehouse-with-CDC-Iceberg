@@ -31,13 +31,8 @@ active_orders = {}
 ledger_file = None
 
 def init_hdfs():
-    client = InsecureClient(HDFS_URL, user='hadoop')
-    # ensure output directory exists
-    try:
-        client.makedirs(HDFS_OUTPUT_DIR)
-    except Exception as e:
-        print(f"Warning creating HDFS dir: {e}")
-    return client
+    # ensure output directory exists in HDFS
+    os.system(f"docker exec hadoop hdfs dfs -mkdir -p {HDFS_OUTPUT_DIR} >/dev/null 2>&1")
 
 def get_current_ts_ms():
     return int(time.time() * 1000)
@@ -74,12 +69,20 @@ def process_batch(client, batch_events, batch_id):
         ledger_file.write(json.dumps(event) + "\n")
     ledger_file.flush()
 
-    # Write to HDFS as a JSON file
-    file_path = f"{HDFS_OUTPUT_DIR}/batch_{batch_id}_{int(time.time())}.json"
-    content = "\n".join([json.dumps(e) for e in batch_events])
+    # Write to local file first
+    os.makedirs(f"{LOCAL_DATA_DIR}/raw", exist_ok=True)
+    local_file_path = f"{LOCAL_DATA_DIR}/raw/batch_{batch_id}_{int(time.time())}.json"
+    with open(local_file_path, 'w') as f:
+        f.write("\n".join([json.dumps(e) for e in batch_events]))
     
-    # We use overwrite=True just in case, but batch names are unique
-    client.write(file_path, data=content.encode('utf-8'), overwrite=True)
+    # Upload to HDFS using docker exec
+    hdfs_file_path = f"{HDFS_OUTPUT_DIR}/batch_{batch_id}_{int(time.time())}.json"
+    
+    # We must copy from host to container, then put into HDFS
+    # Simpler: docker exec can stream from stdin to hdfs dfs -put -
+    cat_cmd = f"cat {local_file_path} | docker exec -i hadoop hdfs dfs -put - {hdfs_file_path}"
+    os.system(cat_cmd)
+    
     print(f"[{get_utc_iso_string()}] Wrote batch {batch_id} with {len(batch_events)} events to HDFS.")
 
 def shutdown_handler(signum, frame):
