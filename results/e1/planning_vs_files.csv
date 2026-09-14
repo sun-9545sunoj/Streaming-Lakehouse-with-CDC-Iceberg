@@ -1,0 +1,9 @@
+target_files,actual_files,meta_bytes,state,plan_ms,agg_ms,filter_ms,point_ms
+10,3,0,uncompacted,25.72,41.89,37.31,63.13
+50,5,0,uncompacted,22.23,28.53,28.62,55.61
+100,7,0,uncompacted,19.8,27.43,28.07,55.08
+500,11,0,uncompacted,21.68,32.26,32.37,60.47
+1000,15,0,uncompacted,20.36,30.89,40.11,57.87
+2500,27,0,uncompacted,19.82,31.86,32.41,64.89
+5000,47,0,uncompacted,29.63,36.12,37.48,66.66
+compacted,2,0,compacted,8.59,12.9,13.57,42.65
