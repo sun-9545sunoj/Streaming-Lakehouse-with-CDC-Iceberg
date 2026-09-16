@@ -26,3 +26,6 @@ project_plan.md
 SPEC.md
 docs/
 scratch.py
+
+clickhouse_data/
+*.log
