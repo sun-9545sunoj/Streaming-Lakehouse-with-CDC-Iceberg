@@ -33,7 +33,10 @@ CDC_SCHEMA = StructType([
         StructField("order_id", StringType(), True),
         StructField("customer_id", StringType(), True),
         StructField("status", StringType(), True),
-        StructField("amount", DoubleType(), True), # Staging as Double to parse JSON, cast to Decimal later
+        # Staged as String, not Double: binary floating point cannot hold every
+        # two-decimal money value exactly, so parsing through a double can lose
+        # a cent before the cast to DECIMAL ever happens.
+        StructField("amount", StringType(), True),
         StructField("currency", StringType(), True),
         StructField("region", StringType(), True),
         StructField("updated_at", StringType(), True),
@@ -42,7 +45,7 @@ CDC_SCHEMA = StructType([
         StructField("order_id", StringType(), True),
         StructField("customer_id", StringType(), True),
         StructField("status", StringType(), True),
-        StructField("amount", DoubleType(), True),
+        StructField("amount", StringType(), True),
         StructField("currency", StringType(), True),
         StructField("region", StringType(), True),
         StructField("updated_at", StringType(), True),
@@ -107,9 +110,11 @@ def process_batch(df, batch_id):
 
     # Deduplicate: sort by ts_ms descending, pick first per order_id
     windowSpec = Window.partitionBy("order_id").orderBy(F.col("ts_ms").desc())
+    # ts_ms drives the dedupe but is not a table column, and UPDATE SET * /
+    # INSERT * expand to whatever the source carries, so it must be dropped.
     deduped_df = parsed_df.withColumn("rn", F.row_number().over(windowSpec)) \
-                          .filter("rn = 1").drop("rn")
-    
+                          .filter("rn = 1").drop("rn").drop("ts_ms")
+
     # We must explicitly use global_temp to bypass Iceberg catalog resolution issues for temp views
     deduped_df.createOrReplaceGlobalTempView("batch_updates")
     
