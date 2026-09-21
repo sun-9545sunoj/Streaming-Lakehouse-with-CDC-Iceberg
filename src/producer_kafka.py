@@ -24,6 +24,7 @@ REGIONS = ["north", "south", "east", "west"]
 CURRENCIES = ["INR", "USD", "EUR", "GBP"]
 
 active_orders = {}
+deleted_orders = []
 ledger_file = None
 
 def get_current_ts_ms():
@@ -62,9 +63,12 @@ def shutdown_handler(signum, frame):
 def write_expected_state():
     os.makedirs(LOCAL_DATA_DIR, exist_ok=True)
     out_path = os.path.join(LOCAL_DATA_DIR, "expected_state_e3.json")
+    # The deleted ids are ground truth too: without them the verifier cannot
+    # tell a correctly applied delete from a delete that was lost on recovery.
+    state = {"active": active_orders, "deleted": deleted_orders}
     with open(out_path, "w") as f:
-        json.dump(active_orders, f, indent=2)
-    print(f"Wrote final state of {len(active_orders)} active orders to {out_path}.")
+        json.dump(state, f, indent=2)
+    print(f"Wrote {len(active_orders)} active and {len(deleted_orders)} deleted orders to {out_path}.")
 
 def main():
     parser = argparse.ArgumentParser(description="Mock CDC Producer to Kafka (E3)")
@@ -73,7 +77,11 @@ def main():
     parser.add_argument("--update-ratio", type=float, default=0.4, help="Probability of an update vs insert")
     parser.add_argument("--delete-ratio", type=float, default=0.05, help="Probability of a delete vs insert")
     parser.add_argument("--max-events", type=int, default=10000, help="Stop after this many events")
+    parser.add_argument("--seed", type=int, help="Seed the generator so a trial can be replayed")
     args = parser.parse_args()
+
+    if args.seed is not None:
+        random.seed(args.seed)
 
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
@@ -85,7 +93,8 @@ def main():
     try:
         producer = KafkaProducer(
             bootstrap_servers=['localhost:9092'],
-            value_serializer=lambda x: json.dumps(x).encode('utf-8')
+            value_serializer=lambda x: json.dumps(x).encode('utf-8'),
+            key_serializer=lambda x: str(x).encode('utf-8')
         )
     except Exception as e:
         print(f"Failed to connect to Kafka. Error: {e}")
@@ -106,6 +115,7 @@ def main():
             if active_orders and rand_val < args.delete_ratio:
                 order_id = random.choice(list(active_orders.keys()))
                 before = active_orders.pop(order_id)
+                deleted_orders.append(order_id)
                 event = create_event("d", before, None)
                 batch_events.append(event)
                 
@@ -133,7 +143,11 @@ def main():
 
         if batch_events:
             for event in batch_events:
-                producer.send('orders.cdc', value=event)
+                # Key by order_id. The topic has 3 partitions and Kafka only
+                # orders within a partition, so unkeyed events let an update
+                # overtake its own create and the merge applies stale state.
+                payload = event["after"] or event["before"]
+                producer.send('orders.cdc', key=payload["order_id"], value=event)
                 ledger_file.write(json.dumps(event) + "\n")
             producer.flush()
             ledger_file.flush()

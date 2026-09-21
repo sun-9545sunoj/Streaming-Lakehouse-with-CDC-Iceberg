@@ -17,14 +17,17 @@ jars/
 
 # keep results and figures — they are the deliverable
 !results/**/*.csv
-!docs/figures/*.png
 
 # Local planning files
 project_plan.md
 
-# Ignore specs and docs
+# The spec is the assignment brief, not a deliverable of this repo.
+# docs/ is NOT ignored: the report, the figures and docs/DECISIONS.md all live
+# there and are listed as deliverables in SPEC section 12. Ignoring the whole
+# directory meant anything written there went missing from every commit, and
+# the !docs/figures/*.png negation above it could never take effect, because
+# git does not descend into an excluded directory to re-include a file.
 SPEC.md
-docs/
 scratch.py
 
 clickhouse_data/

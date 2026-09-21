@@ -30,7 +30,7 @@ CDC_SCHEMA = StructType([
         StructField("order_id", StringType(), True),
         StructField("customer_id", StringType(), True),
         StructField("status", StringType(), True),
-        StructField("amount", DoubleType(), True),
+        StructField("amount", StringType(), True),
         StructField("currency", StringType(), True),
         StructField("region", StringType(), True),
         StructField("updated_at", StringType(), True),
@@ -39,7 +39,7 @@ CDC_SCHEMA = StructType([
         StructField("order_id", StringType(), True),
         StructField("customer_id", StringType(), True),
         StructField("status", StringType(), True),
-        StructField("amount", DoubleType(), True),
+        StructField("amount", StringType(), True),
         StructField("currency", StringType(), True),
         StructField("region", StringType(), True),
         StructField("updated_at", StringType(), True),
@@ -94,7 +94,7 @@ def process_batch(df, batch_id):
 
     windowSpec = Window.partitionBy("order_id").orderBy(F.col("ts_ms").desc())
     deduped_df = parsed_df.withColumn("rn", F.row_number().over(windowSpec)) \
-                          .filter("rn = 1").drop("rn")
+                          .filter("rn = 1").drop("rn").drop("ts_ms")
 
     deduped_df.createOrReplaceGlobalTempView("batch_updates")
 

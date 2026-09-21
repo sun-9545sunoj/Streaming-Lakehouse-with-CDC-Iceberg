@@ -25,7 +25,10 @@ def run_query_with_timing(spark, query):
         duration = time.time() - start
         print(f"Completed in {duration:.2f} seconds.")
     except Exception as e:
+        # A swallowed failure here used to exit 0, so a compaction that never
+        # ran still looked like a successful maintenance run.
         print(f"Error executing query: {e}")
+        raise
 
 def rewrite_data_files(spark, table="default.orders"):
     run_query_with_timing(spark, f"CALL spark_catalog.system.rewrite_data_files(table => '{table}')")
@@ -76,5 +79,5 @@ if __name__ == "__main__":
         expire_snapshots(spark, args.table)
     if args.orphan:
         remove_orphan_files(spark, args.table)
-    if args.rollback:
+    if args.rollback is not None:
         rollback_to_snapshot(spark, args.table, args.rollback)
