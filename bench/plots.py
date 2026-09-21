@@ -15,34 +15,54 @@ def plot_e1():
     uncompacted = df[df["state"] == "uncompacted"]
     compacted = df[df["state"] == "compacted"]
     
+    os.makedirs("docs/figures", exist_ok=True)
+
+    # Both arms are now measured at every target, so this is two real series
+    # against the file count each arm actually had.
     plt.figure(figsize=(10, 6))
-    
-    plt.plot(uncompacted["actual_files"], uncompacted["plan_ms"], marker='o', label="Uncompacted", linewidth=2)
-    
+    plt.plot(uncompacted["actual_files"], uncompacted["plan_ms"],
+             marker='o', label="Before compaction", linewidth=2, color="blue")
     if not compacted.empty:
-        # compacted is a single point, but we draw a horizontal line for comparison
-        c_plan = compacted["plan_ms"].iloc[0]
-        plt.axhline(y=c_plan, color='r', linestyle='--', label=f"Compacted (plan: {c_plan} ms)")
-        
+        plt.plot(compacted["actual_files"], compacted["plan_ms"],
+                 marker='s', label="After compaction", linewidth=2, color="red")
     plt.xscale('log')
     plt.xlabel("Number of Data Files (log scale)")
     plt.ylabel("Planning Time (ms)")
     plt.title("E1: Query Planning Cost vs Data File Count")
     plt.grid(True, which="both", ls="-", alpha=0.2)
     plt.legend()
-    
-    os.makedirs("docs/figures", exist_ok=True)
     plt.savefig("docs/figures/e1_planning.png", dpi=300, bbox_inches='tight')
+    plt.close()
     print("Saved docs/figures/e1_planning.png")
 
+    # Metadata growth is the mechanism behind the planning curve, so it gets its
+    # own figure rather than a sentence in the report.
+    if uncompacted["meta_bytes"].max() > 0:
+        plt.figure(figsize=(10, 6))
+        plt.plot(uncompacted["actual_files"], uncompacted["meta_bytes"] / 1024,
+                 marker='o', label="Before compaction", color="blue")
+        plt.plot(compacted["actual_files"], compacted["meta_bytes"] / 1024,
+                 marker='s', label="After compaction", color="red")
+        plt.xscale('log')
+        plt.xlabel("Number of Data Files (log scale)")
+        plt.ylabel("Metadata Tree Size (KB)")
+        plt.title("E1: Iceberg Metadata Size vs Data File Count")
+        plt.grid(True, which="both", ls="-", alpha=0.2)
+        plt.legend()
+        plt.savefig("docs/figures/e1_metadata.png", dpi=300, bbox_inches='tight')
+        plt.close()
+        print("Saved docs/figures/e1_metadata.png")
+
 def plot_e2():
-    e2_files = glob.glob("results/e2/cow_vs_mor_*.csv")
+    e2_files = sorted(glob.glob("results/e2/cow_vs_mor_p*.csv"))
     if not e2_files:
         print("E2 results not found.")
         return
-        
+
+    os.makedirs("docs/figures", exist_ok=True)
     for file in e2_files:
-        pct = file.split("_")[-1].replace("pct.csv", "")
+        tag = os.path.basename(file).replace("cow_vs_mor_p", "").replace(".csv", "")
+        pct = tag.replace("_", ".")
         df = pd.read_csv(file)
         
         cow = df[df["table_type"] == "cow"]
@@ -57,18 +77,32 @@ def plot_e2():
         plt.title(f"E2: Write Amplification (Update Ratio = {pct}%)")
         plt.grid(True, alpha=0.3)
         plt.legend()
-        plt.savefig(f"docs/figures/e2_write_{pct}pct.png", dpi=300, bbox_inches='tight')
-        
+        plt.savefig(f"docs/figures/e2_write_cost_p{tag}.png", dpi=300, bbox_inches='tight')
+        plt.close()
+
         # Read Cost Plot
         plt.figure(figsize=(10, 6))
-        plt.plot(cow["round"], cow["read_ms"], marker='o', label="COW (Read)", color="blue")
-        plt.plot(mor["round"], mor["read_ms"], marker='s', label="MOR (Read)", color="green")
+        plt.plot(cow["round"], cow["scan_ms"], marker='o', label="COW (Read)", color="blue")
+        plt.plot(mor["round"], mor["scan_ms"], marker='s', label="MOR (Read)", color="green")
         plt.xlabel("Update Round")
         plt.ylabel("Full Scan Time (ms)")
         plt.title(f"E2: Read Amplification (Update Ratio = {pct}%)")
         plt.grid(True, alpha=0.3)
         plt.legend()
-        plt.savefig(f"docs/figures/e2_read_{pct}pct.png", dpi=300, bbox_inches='tight')
+        plt.savefig(f"docs/figures/e2_read_cost_p{tag}.png", dpi=300, bbox_inches='tight')
+        plt.close()
+
+        # Cumulative bytes written - the write-amplification story in bytes
+        plt.figure(figsize=(10, 6))
+        plt.plot(cow["round"], cow["added_bytes"].cumsum() / 1e6, marker='o', label="COW", color="blue")
+        plt.plot(mor["round"], mor["added_bytes"].cumsum() / 1e6, marker='s', label="MOR", color="green")
+        plt.xlabel("Update Round")
+        plt.ylabel("Cumulative Bytes Written (MB)")
+        plt.title(f"E2: Cumulative Write Volume (Update Ratio = {pct}%)")
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        plt.savefig(f"docs/figures/e2_bytes_written_p{tag}.png", dpi=300, bbox_inches='tight')
+        plt.close()
         print(f"Saved E2 plots for {pct}%")
 
 def main():
