@@ -58,8 +58,13 @@ def main():
     spark.sparkContext.setLogLevel("ERROR")
     table = table_id(args.table)
 
+    # Format the timestamp in SQL. Collecting a TimestampType yields a naive
+    # datetime in the driver's local zone (IST on the dev Mac), which then never
+    # matches the producer's UTC string. The session zone is pinned to UTC in
+    # spark_session.py, so this renders the stored instant in UTC.
     rows = spark.sql(
-        f"SELECT order_id, status, amount, updated_at FROM {table}"
+        f"SELECT order_id, status, amount, "
+        f"date_format(updated_at, \"yyyy-MM-dd'T'HH:mm:ss\") AS updated_at FROM {table}"
     ).collect()
 
     actual = {}

@@ -47,7 +47,10 @@ def build_session(app_name, with_kafka=False):
         # itself before the first job starts.
         .config("spark.driver.bindAddress", os.environ.get("SPARK_DRIVER_BIND", "127.0.0.1"))
         .config("spark.driver.host", os.environ.get("SPARK_DRIVER_HOST", "127.0.0.1"))
-        .config("spark.ui.showConsoleProgress", "false"))
+        .config("spark.ui.showConsoleProgress", "false")
+        # The producer's timestamps are UTC ('...Z'). Pin the session zone so
+        # parsing and rendering agree with it whatever the machine's zone is.
+        .config("spark.sql.session.timeZone", "UTC"))
 
     if CATALOG_TYPE == "hadoop":
         builder = (builder

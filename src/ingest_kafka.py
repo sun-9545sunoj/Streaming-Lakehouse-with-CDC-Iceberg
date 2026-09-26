@@ -41,10 +41,11 @@ def process_batch(spark, table):
         parsed = df.selectExpr(
             "op as _op",
             "ts_ms",
+            "_kafka_offset",
             "current_timestamp() as _ingest_ts",
             "CASE WHEN op = 'd' THEN before ELSE after END as payload",
         ).selectExpr(
-            "_op", "ts_ms", "_ingest_ts",
+            "_op", "ts_ms", "_kafka_offset", "_ingest_ts",
             "payload.order_id",
             "payload.customer_id",
             "payload.status",
@@ -56,15 +57,20 @@ def process_batch(spark, table):
 
         # A micro-batch can hold several events for one order_id, and MERGE INTO
         # throws when two source rows match one target row. Keep the latest per
-        # key by ts_ms.
-        window = Window.partitionBy("order_id").orderBy(F.col("ts_ms").desc())
+        # key by ts_ms. ts_ms has millisecond resolution and the producer emits
+        # a create and an update for the same order within one millisecond, so
+        # ts_ms alone ties and row_number() would keep an arbitrary one. Events
+        # are keyed by order_id, so all events for a key share a partition and
+        # the Kafka offset orders them exactly: it breaks the tie.
+        window = (Window.partitionBy("order_id")
+                  .orderBy(F.col("ts_ms").desc(), F.col("_kafka_offset").desc()))
         deduped = (parsed
             .withColumn("rn", F.row_number().over(window))
             .filter("rn = 1")
             .drop("rn")
-            # ts_ms is a dedupe input, not a table column; UPDATE SET * and
-            # INSERT * expand to the source columns, so it must not survive.
-            .drop("ts_ms"))
+            # Dedupe inputs, not table columns: UPDATE SET * and INSERT *
+            # expand to the source columns, so they must not survive.
+            .drop("ts_ms", "_kafka_offset"))
 
         deduped.createOrReplaceGlobalTempView("batch_updates_kafka")
 
@@ -89,6 +95,9 @@ def main():
                         help="SPEC 9.3 control run: start from a throwaway checkpoint every "
                              "time, so a restart replays the topic instead of resuming. "
                              "Produces the failure mode exactly-once is supposed to prevent.")
+    parser.add_argument("--drain", action="store_true",
+                        help="Process every offset already in the topic, then exit. Used by "
+                             "the E3 harness after the producer finishes.")
     args = parser.parse_args()
 
     spark = build_session("StreamingLakehouseIngestKafka", with_kafka=True)
@@ -117,15 +126,20 @@ def main():
         .option("subscribe", args.topic)
         .option("startingOffsets", "earliest")
         .load()
-        .selectExpr("CAST(value AS STRING) as json_str")
-        .select(from_json(col("json_str"), CDC_SCHEMA).alias("data"))
-        .select("data.*"))
+        .selectExpr("CAST(value AS STRING) as json_str", "offset as _kafka_offset")
+        .select(from_json(col("json_str"), CDC_SCHEMA).alias("data"), "_kafka_offset")
+        .select("data.*", "_kafka_offset"))
 
-    query = (stream.writeStream
+    # availableNow stops by itself once it has caught up with the offsets that
+    # existed at start, so the drain pass needs no wall-clock timeout.
+    writer = (stream.writeStream
         .foreachBatch(process_batch(spark, table))
-        .option("checkpointLocation", checkpoint)
-        .trigger(processingTime="5 seconds")
-        .start())
+        .option("checkpointLocation", checkpoint))
+    if args.drain:
+        writer = writer.trigger(availableNow=True)
+    else:
+        writer = writer.trigger(processingTime="5 seconds")
+    query = writer.start()
 
     print(f"Streaming {args.topic} -> {table} ... (Ctrl+C to stop)")
     query.awaitTermination()
