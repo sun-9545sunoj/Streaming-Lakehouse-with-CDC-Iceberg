@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+  Hive 3.1.3 config for the standalone Thrift metastore (SPEC section 6.2).
+
+  One metastore process owns the Derby database; Spark and the Hive CLI both
+  connect to it on 9083 instead of opening Derby embedded. Derby is
+  single-writer, so two embedded clients lock each other out.
+
+  Used by scripts/start_metastore.sh, which points HIVE_CONF_DIR here. The
+  course labs keep using ~/hive/apache-hive-3.1.3-bin/conf (embedded mode), so
+  do not run a lab Hive session while this metastore is up.
+
+  Paths are absolute because Hive does not expand environment variables in
+  this file. Adjust them for another machine.
+-->
+<configuration>
+
+  <!-- server side: where the metastore keeps its Derby database -->
+  <property>
+    <name>javax.jdo.option.ConnectionURL</name>
+    <value>jdbc:derby:;databaseName=/Users/vivek/hive/metastore_db;create=true</value>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionDriverName</name>
+    <value>org.apache.derby.jdbc.EmbeddedDriver</value>
+  </property>
+  <property>
+    <name>hive.metastore.schema.verification</name>
+    <value>false</value>
+  </property>
+
+  <!-- client side: Spark and the Hive CLI go through Thrift -->
+  <property>
+    <name>hive.metastore.uris</name>
+    <value>thrift://localhost:9083</value>
+  </property>
+
+  <property>
+    <name>hive.metastore.warehouse.dir</name>
+    <value>hdfs://localhost:9000/warehouse</value>
+  </property>
+  <property>
+    <name>hive.exec.local.scratchdir</name>
+    <value>/Users/vivek/hive/tmp</value>
+  </property>
+
+  <!-- lets the Hive CLI read Iceberg tables registered by Spark's HiveCatalog -->
+  <property>
+    <name>iceberg.engine.hive.enabled</name>
+    <value>true</value>
+  </property>
+
+  <property>
+    <name>hive.metastore.event.db.notification.api.auth</name>
+    <value>false</value>
+  </property>
+
+</configuration>

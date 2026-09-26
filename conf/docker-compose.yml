@@ -1,0 +1,35 @@
+# Kafka (KRaft) and ClickHouse for the streaming lakehouse.
+#
+#   docker compose -f conf/docker-compose.yml up -d kafka        # E3 / Phase 4
+#   docker compose -f conf/docker-compose.yml up -d clickhouse   # Phase 5
+#
+# Do not run ClickHouse during E1/E2: it competes for RAM with the Spark driver
+# and the benchmark numbers stop meaning anything (SPEC section 6.3).
+#
+# The scripts/start_*.sh launchers do the same thing with plain `docker run`
+# and are what bench/e3_chaos.sh expects (container name `kafka`).
+
+services:
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    # The image defaults to a single combined broker+controller KRaft node
+    # advertising PLAINTEXT://localhost:9092.
+    mem_limit: 1536m
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse-server
+    ports:
+      - "8123:8123"
+      - "9001:9000"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    # HDFS runs on the host; the container reaches it via host.docker.internal.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    mem_limit: 2g

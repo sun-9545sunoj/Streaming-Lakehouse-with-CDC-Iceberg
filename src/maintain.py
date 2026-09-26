@@ -1,20 +1,18 @@
+"""Iceberg table maintenance: compaction, snapshot expiry, orphan cleanup, rollback.
+
+The catalog comes from src/spark_session.py (E3_CATALOG=hive|hadoop), so this
+works on the same table the ingest job writes. --table is the bare table name.
+"""
 import time
 import argparse
-from pyspark.sql import SparkSession
+import datetime
 
-HDFS_URL = "hdfs://localhost:9000"
-METASTORE_URL = "thrift://localhost:9083"
+from spark_session import build_session, table_id, procedure_catalog, CATALOG_TYPE
 
-def get_spark():
-    return (SparkSession.builder
-        .appName("IcebergMaintenance")
-        .config("spark.jars.packages", "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.10.0")
-        .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
-        .config("spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog")
-        .config("spark.sql.catalog.spark_catalog.type", "hive")
-        .config("spark.sql.catalog.spark_catalog.uri", METASTORE_URL)
-        .config("spark.sql.catalog.spark_catalog.warehouse", f"{HDFS_URL}/warehouse")
-        .getOrCreate())
+
+def procedure_table_arg(table):
+    """Procedures take the identifier without the catalog prefix."""
+    return table.split(".", 1)[1] if CATALOG_TYPE == "hadoop" else table
 
 def run_query_with_timing(spark, query):
     print(f"\nExecuting: {query}")
@@ -30,28 +28,30 @@ def run_query_with_timing(spark, query):
         print(f"Error executing query: {e}")
         raise
 
-def rewrite_data_files(spark, table="default.orders"):
-    run_query_with_timing(spark, f"CALL spark_catalog.system.rewrite_data_files(table => '{table}')")
+def rewrite_data_files(spark, table):
+    run_query_with_timing(spark, f"CALL {procedure_catalog()}.system.rewrite_data_files(table => '{procedure_table_arg(table)}')")
 
-def rewrite_manifests(spark, table="default.orders"):
-    run_query_with_timing(spark, f"CALL spark_catalog.system.rewrite_manifests(table => '{table}')")
+def rewrite_manifests(spark, table):
+    run_query_with_timing(spark, f"CALL {procedure_catalog()}.system.rewrite_manifests(table => '{procedure_table_arg(table)}')")
 
-def expire_snapshots(spark, table="default.orders", older_than=None, retain_last=1):
-    if older_than:
-        run_query_with_timing(spark, f"CALL spark_catalog.system.expire_snapshots(table => '{table}', older_than => TIMESTAMP '{older_than}')")
-    else:
-        run_query_with_timing(spark, f"CALL spark_catalog.system.expire_snapshots(table => '{table}', retain_last => {retain_last})")
+def expire_snapshots(spark, table, retain_last=1):
+    # retain_last alone expires nothing on a young table: Iceberg still applies
+    # its default older_than of now - 5 days. Pass now explicitly.
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    run_query_with_timing(spark, f"CALL {procedure_catalog()}.system.expire_snapshots("
+                                 f"table => '{procedure_table_arg(table)}', "
+                                 f"older_than => TIMESTAMP '{now}', retain_last => {retain_last})")
 
-def remove_orphan_files(spark, table="default.orders"):
-    run_query_with_timing(spark, f"CALL spark_catalog.system.remove_orphan_files(table => '{table}')")
+def remove_orphan_files(spark, table):
+    run_query_with_timing(spark, f"CALL {procedure_catalog()}.system.remove_orphan_files(table => '{procedure_table_arg(table)}')")
 
-def rollback_to_snapshot(spark, table="default.orders", snapshot_id=None):
+def rollback_to_snapshot(spark, table, snapshot_id=None):
     if snapshot_id is None:
         print("Please provide a snapshot ID to rollback to.")
         return
-    run_query_with_timing(spark, f"CALL spark_catalog.system.rollback_to_snapshot(table => '{table}', snapshot_id => {snapshot_id})")
+    run_query_with_timing(spark, f"CALL {procedure_catalog()}.system.rollback_to_snapshot(table => '{procedure_table_arg(table)}', snapshot_id => {snapshot_id})")
 
-def get_history(spark, table="default.orders"):
+def get_history(spark, table):
     run_query_with_timing(spark, f"SELECT * FROM {table}.history")
     run_query_with_timing(spark, f"SELECT * FROM {table}.snapshots")
     run_query_with_timing(spark, f"SELECT count(*) as file_count FROM {table}.files")
@@ -59,17 +59,18 @@ def get_history(spark, table="default.orders"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Iceberg Table Maintenance")
     parser.add_argument("--compact", action="store_true", help="Rewrite data files and manifests")
-    parser.add_argument("--expire", action="store_true", help="Expire snapshots retaining only the last 1")
+    parser.add_argument("--expire", action="store_true", help="Expire every snapshot but the current one")
     parser.add_argument("--orphan", action="store_true", help="Remove orphan files")
     parser.add_argument("--history", action="store_true", help="Show table history, snapshots, and file count")
     parser.add_argument("--rollback", type=int, help="Rollback to a specific snapshot ID")
-    parser.add_argument("--table", default="default.orders", help="Target table")
-    
+    parser.add_argument("--table", default="orders_kafka", help="Bare table name")
+
     args = parser.parse_args()
-    
-    spark = get_spark()
+
+    spark = build_session("IcebergMaintenance")
     spark.sparkContext.setLogLevel("WARN")
-    
+    args.table = table_id(args.table)
+
     if args.history:
         get_history(spark, args.table)
     if args.compact:
