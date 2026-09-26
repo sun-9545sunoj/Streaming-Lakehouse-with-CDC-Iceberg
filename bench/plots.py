@@ -118,6 +118,46 @@ def plot_e2():
         plt.close()
         print(f"Saved E2 plots for {pct}%")
 
+    plot_e2_overview(e2_files)
+
+
+def plot_e2_overview(e2_files):
+    """One grid for the report: per-round write, per-round read, cumulative cost."""
+    frames = sorted((pd.read_csv(f) for f in e2_files), key=lambda d: d["p_pct"].iloc[0])
+    fig, axes = plt.subplots(3, len(frames), figsize=(4.5 * len(frames), 11), squeeze=False)
+    for col, df in enumerate(frames):
+        cow = df[df["table_type"] == "cow"]
+        mor = df[df["table_type"] == "mor"]
+        pct = df["p_pct"].iloc[0]
+        panels = [
+            ("write_ms", "MERGE time (s)", lambda s: s / 1000),
+            ("scan_ms", "Full-scan GROUP BY (ms)", lambda s: s),
+            (None, "Cumulative write + scan (s)", None),
+        ]
+        for row, (metric, label, scale) in enumerate(panels):
+            ax = axes[row][col]
+            if metric:
+                ax.plot(cow["round"], scale(cow[metric]), marker='o', ms=3, color="blue", label="COW")
+                ax.plot(mor["round"], scale(mor[metric]), marker='s', ms=3, color="green", label="MOR")
+            else:
+                ax.plot(cow["round"], (cow["write_ms"] + cow["scan_ms"]).cumsum() / 1000,
+                        color="blue", label="COW")
+                ax.plot(mor["round"], (mor["write_ms"] + mor["scan_ms"]).cumsum() / 1000,
+                        color="green", label="MOR")
+            if row == 0:
+                ax.set_title(f"update ratio {pct}% ({int(cow['update_count'].mean()):,} rows/round)")
+            if col == 0:
+                ax.set_ylabel(label)
+            if row == 2:
+                ax.set_xlabel("Update round")
+            ax.grid(True, alpha=0.3)
+            ax.legend(fontsize=8)
+    rows = int(frames[0]["rows"].iloc[0])
+    fig.suptitle(f"E2: copy-on-write vs merge-on-read, {rows:,} rows, no compaction between rounds")
+    fig.savefig("docs/figures/e2_overview.png", dpi=200, bbox_inches='tight')
+    plt.close(fig)
+    print("Saved docs/figures/e2_overview.png")
+
 def plot_e3():
     arms = [("results/e3/failure_trials.csv", "Checkpoint on"),
             ("results/e3/failure_trials_broken.csv", "Throwaway checkpoint (control)")]
