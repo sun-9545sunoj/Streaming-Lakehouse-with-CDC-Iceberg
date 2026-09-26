@@ -25,15 +25,20 @@ TRIALS="${TRIALS:-20}"
 EVENTS="${EVENTS:-10000}"
 TABLE="${TABLE:-orders_kafka}"
 RESULTS="results/e3/failure_trials.csv"
+STARTING_OFFSETS="${STARTING_OFFSETS:-earliest}"
 BROKEN_FLAG=""
 
 if [ "${BROKEN_CONTROL:-0}" = "1" ]; then
     # SPEC 9.3 requires showing what the failure looks like when it is NOT
-    # exactly-once. This arm restarts from a throwaway checkpoint every time.
+    # exactly-once. This arm restarts from a throwaway checkpoint every time,
+    # so where a restart resumes is decided by STARTING_OFFSETS alone:
+    #   earliest - replays the whole topic after every kill
+    #   latest   - Spark's Kafka default; skips whatever arrived while down
     BROKEN_FLAG="--broken-checkpoint"
-    RESULTS="results/e3/failure_trials_broken.csv"
-    echo "RUNNING THE BROKEN CONTROL ARM - duplicates here are the expected result"
+    RESULTS="results/e3/failure_trials_broken_${STARTING_OFFSETS}.csv"
+    echo "RUNNING THE BROKEN CONTROL ARM (throwaway checkpoint, startingOffsets=$STARTING_OFFSETS)"
 fi
+INGEST_FLAGS="$BROKEN_FLAG --starting-offsets $STARTING_OFFSETS"
 
 mkdir -p results/e3
 
@@ -73,7 +78,7 @@ for trial in $(seq 1 "$TRIALS"); do
 
     # 3. Chaos loop: run the ingest, kill it mid-batch, restart from checkpoint.
     while kill -0 $PROD_PID 2>/dev/null; do
-        "$PYTHON" src/ingest_kafka.py --table "$TABLE" $BROKEN_FLAG > /tmp/e3_ingest.log 2>&1 &
+        "$PYTHON" src/ingest_kafka.py --table "$TABLE" $INGEST_FLAGS > /tmp/e3_ingest.log 2>&1 &
         INGEST_PID=$!
 
         # Spark takes ~15 s to start. A fixed sleep from launch mostly killed the
@@ -104,7 +109,7 @@ for trial in $(seq 1 "$TRIALS"); do
     #    turned "command not found" into a silently skipped drain.
     echo "  producer done, draining the topic..."
     DRAIN_START=$(date +%s)
-    "$PYTHON" src/ingest_kafka.py --table "$TABLE" $BROKEN_FLAG --drain \
+    "$PYTHON" src/ingest_kafka.py --table "$TABLE" $INGEST_FLAGS --drain \
         > /tmp/e3_ingest.log 2>&1 || echo "  WARNING: drain exited non-zero, see /tmp/e3_ingest.log"
     RECOVERY=$(( $(date +%s) - DRAIN_START ))
 

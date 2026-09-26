@@ -1,0 +1,4 @@
+trial,seed,kills,expected_rows,actual_rows,duplicates,missing,mismatched,resurrected,snapshots,recovery_seconds,checkpoint_enabled,passed
+1,1001,11,5625,2279,0,3473,545,127,12,4.0,false,False
+2,1002,12,5581,2612,0,3101,453,132,14,4.0,false,False
+3,1003,10,5660,2994,0,2847,672,181,14,3.0,false,False

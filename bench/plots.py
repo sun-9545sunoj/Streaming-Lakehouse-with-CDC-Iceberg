@@ -160,7 +160,8 @@ def plot_e2_overview(e2_files):
 
 def plot_e3():
     arms = [("results/e3/failure_trials.csv", "Checkpoint on"),
-            ("results/e3/failure_trials_broken.csv", "Throwaway checkpoint (control)")]
+            ("results/e3/failure_trials_broken_earliest.csv", "No checkpoint, replay from earliest"),
+            ("results/e3/failure_trials_broken_latest.csv", "No checkpoint, resume at latest")]
     present = [(pd.read_csv(path), label) for path, label in arms if os.path.exists(path)]
     if not present:
         print("E3 results not found.")

@@ -95,6 +95,9 @@ def main():
                         help="SPEC 9.3 control run: start from a throwaway checkpoint every "
                              "time, so a restart replays the topic instead of resuming. "
                              "Produces the failure mode exactly-once is supposed to prevent.")
+    parser.add_argument("--starting-offsets", default="earliest", choices=["earliest", "latest"],
+                        help="Where a query with no checkpoint starts. Ignored once a "
+                             "checkpoint exists. 'latest' is Spark's Kafka default.")
     parser.add_argument("--drain", action="store_true",
                         help="Process every offset already in the topic, then exit. Used by "
                              "the E3 harness after the producer finishes.")
@@ -124,7 +127,7 @@ def main():
         .format("kafka")
         .option("kafka.bootstrap.servers", args.bootstrap_servers)
         .option("subscribe", args.topic)
-        .option("startingOffsets", "earliest")
+        .option("startingOffsets", args.starting_offsets)
         .load()
         .selectExpr("CAST(value AS STRING) as json_str", "offset as _kafka_offset")
         .select(from_json(col("json_str"), CDC_SCHEMA).alias("data"), "_kafka_offset")
