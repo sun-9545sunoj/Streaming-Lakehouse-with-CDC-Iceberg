@@ -337,6 +337,15 @@ the earlier claim of 20 passing trials could not have been produced by that code
 
 **Scope and method**
 
+- **Provenance of the `git_commit` column.** The E1 and E2 runs started before their
+  harness fixes were committed, so their CSVs record the parent commit `4fb2694`. The code
+  that actually ran is what commits `0e17674` (E1) and `00ab27f` (E2) contain. The E3 runs
+  record the commit they ran on.
+- **E3 CSVs gained an `unexpected` column after the runs.** It counts rows whose key the
+  producer never created. The verifier did not check this when the trials ran, which the
+  demo rehearsal exposed. It is exactly derivable from the recorded columns
+  (`actual_rows - (expected_rows - missing) - resurrected`, since keys are unique) and is 0
+  for every trial in every arm, so no result changes.
 - **One machine.** Everything ran on a 16 GB Mac: HDFS with one DataNode, Spark
   `local[4]`. Absolute times are laptop times. Only the shape of each curve, and the
   crossovers, are meant to generalise.

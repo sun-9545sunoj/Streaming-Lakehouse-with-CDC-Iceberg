@@ -1,4 +1,4 @@
-trial,seed,kills,expected_rows,actual_rows,duplicates,missing,mismatched,resurrected,snapshots,recovery_seconds,checkpoint_enabled,passed
-1,1001,13,5625,5625,0,0,0,0,22,9.0,false,True
-2,1002,10,5581,5581,0,0,0,0,19,10.0,false,True
-3,1003,10,5660,5660,0,0,0,0,21,8.0,false,True
+trial,seed,kills,expected_rows,actual_rows,duplicates,missing,mismatched,resurrected,unexpected,snapshots,recovery_seconds,checkpoint_enabled,passed
+1,1001,13,5625,5625,0,0,0,0,0,22,9.0,false,True
+2,1002,10,5581,5581,0,0,0,0,0,19,10.0,false,True
+3,1003,10,5660,5660,0,0,0,0,0,21,8.0,false,True
