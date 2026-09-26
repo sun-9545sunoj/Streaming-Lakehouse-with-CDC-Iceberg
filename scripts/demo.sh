@@ -87,6 +87,12 @@ reset_pipeline() {
     rm -f data/expected_state_e3.json data/ledger_e3.jsonl
 }
 
+stop_stream() {
+    [ -f "$LOG_DIR/ingest.pid" ] && kill "$(cat "$LOG_DIR/ingest.pid")" 2>/dev/null
+    [ -f "$LOG_DIR/producer.pid" ] && kill "$(cat "$LOG_DIR/producer.pid")" 2>/dev/null
+    sleep 3
+}
+
 case "$STEP" in
 0)
     banner
@@ -129,6 +135,11 @@ case "$STEP" in
     ;;
 5)
     banner
+    # rewrite_manifests validates against the snapshot it started from and
+    # fails with "Deleted manifest ... could not be found in the latest
+    # snapshot" if the stream commits meanwhile. Pause the stream first.
+    echo "(pausing the stream: maintenance and streaming commits conflict)"
+    stop_stream
     sql "SELECT count(*) AS live_files_before FROM {t}.files" \
         "SELECT count(*) AS all_snapshot_files_before FROM {t}.all_data_files" \
         "SELECT count(*) AS snapshots_before FROM {t}.snapshots" \
@@ -143,10 +154,8 @@ case "$STEP" in
     ;;
 6)
     banner
-    # Stop ingest first so the only commits in play are the delete and the rollback.
-    [ -f "$LOG_DIR/ingest.pid" ] && kill "$(cat "$LOG_DIR/ingest.pid")" 2>/dev/null
-    [ -f "$LOG_DIR/producer.pid" ] && kill "$(cat "$LOG_DIR/producer.pid")" 2>/dev/null
-    sleep 3
+    # Keep the stream stopped so the only commits in play are the delete and the rollback.
+    stop_stream
     "$PY" src/demo_query.py "SELECT snapshot_id FROM {t}.snapshots ORDER BY committed_at DESC LIMIT 1" 2>/dev/null \
         | grep -oE "[0-9]{12,}" | head -1 > "$LOG_DIR/good_snapshot"
     GOOD=$(cat "$LOG_DIR/good_snapshot")
@@ -181,8 +190,7 @@ case "$STEP" in
 8)
     banner
     docker ps --format '{{.Names}}' | grep -qx clickhouse-server || bash scripts/start_clickhouse.sh
-    [ -f "$LOG_DIR/ingest.pid" ] && kill "$(cat "$LOG_DIR/ingest.pid")" 2>/dev/null
-    [ -f "$LOG_DIR/producer.pid" ] && kill "$(cat "$LOG_DIR/producer.pid")" 2>/dev/null
+    stop_stream
     # Hive's reader cannot decode zstd on macOS (see scripts/hive/read_iceberg.hql).
     "$PY" src/demo_query.py "ALTER TABLE {t} SET TBLPROPERTIES ('write.parquet.compression-codec'='gzip')" \
         "CALL lh.system.rewrite_data_files(table => 'e3.orders_kafka', options => map('rewrite-all','true'))" > /dev/null 2>&1

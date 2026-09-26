@@ -376,6 +376,12 @@ the earlier claim of 20 passing trials could not have been produced by that code
 - **The file-source ingest (`src/ingest.py`) still orders only by `ts_ms`.** A file source
   has no offset to break ties, so it can keep the wrong event when two events for one key
   share a millisecond. The Kafka path used for E3 is fixed (section 6).
+- **Maintenance conflicts with the running stream.** In the second demo rehearsal,
+  `rewrite_manifests` failed with `ValidationException: Deleted manifest ... could not be
+  found in the latest snapshot` because the streaming job committed while it ran. Iceberg's
+  optimistic concurrency rejects a maintenance commit whose base changed. It does not merge
+  it. The demo now pauses the stream for maintenance. A production pipeline would schedule
+  compaction between streaming commits or retry it.
 - **HadoopCatalog assumes one writer per table.** Concurrent writers need a catalog with
   compare-and-swap commits (Hive, REST, JDBC).
 

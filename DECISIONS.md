@@ -156,3 +156,17 @@ through Hadoop's native `ZStandardCodec`, and there's no macOS libhadoop with zs
 the data files. The E1/E2/E3 tables stay on the default codec.
 **Why:** gzip decodes in pure Java in Hadoop. Changing the codec for the measured runs would
 have changed what they measured.
+
+---
+
+### 2026-09-26 - Demo pauses the stream during maintenance
+
+**Context:** In the second demo rehearsal, `rewrite_manifests` failed with
+`ValidationException: Deleted manifest ... could not be found in the latest snapshot`. A
+streaming commit had landed while the maintenance was running. The first rehearsal passed
+only because the timing happened not to collide.
+**Decision:** `scripts/demo.sh` step 5 stops the producer and the ingest job before
+compaction and snapshot expiry.
+**Why:** Iceberg's optimistic concurrency rejects a maintenance commit whose base snapshot
+changed underneath it. A streaming table needs maintenance scheduled between commits, or
+retried.
