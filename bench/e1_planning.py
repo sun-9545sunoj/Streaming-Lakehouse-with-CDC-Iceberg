@@ -158,15 +158,40 @@ def measure_planning(spark, query, reps):
     return round(statistics.median(times[1:]), 2)
 
 
+def iceberg_scan_planning(spark, table, reps):
+    """Median time for Iceberg itself to plan a full scan, plus the task count.
+
+    This is the planning cost E1 is about: read the manifest list, read every
+    manifest, emit one FileScanTask per data file and combine them into splits.
+    It runs entirely on the JVM - Iterables.size drains the iterable there, so
+    there is one py4j round trip per rep rather than one per file.
+
+    Spark's EXPLAIN is not a substitute: for `count(*)` Iceberg can answer from
+    manifest statistics (aggregate pushdown), and Spark plans input partitions
+    lazily, so EXPLAIN stays flat whatever the file count.
+    """
+    jvm = spark._jvm
+    iceberg_table = jvm.org.apache.iceberg.spark.Spark3Util.loadIcebergTable(
+        spark._jsparkSession, table)
+    iterables = jvm.org.apache.iceberg.relocated.com.google.common.collect.Iterables
+    times = []
+    tasks = 0
+    for _ in range(reps + 1):
+        start = time.time()
+        tasks = iterables.size(iceberg_table.newScan().planTasks())
+        times.append((time.time() - start) * 1000.0)
+    return round(statistics.median(times[1:]), 2), tasks
+
+
 def measure_point(spark, table, rows, state, target, reps, meta):
     q_agg = f"SELECT region, count(*), sum(amount) FROM {table} GROUP BY region"
     q_filter = f"SELECT count(*) FROM {table} WHERE region = 'north'"
     q_point = f"SELECT * FROM {table} WHERE order_id = 'ORD-{rows // 2}'"
 
     files = spark.sql(f"SELECT count(*) FROM {table}.files").collect()[0][0]
-    # Split count is the number of tasks the scan plans, which is the cost the
-    # planner actually pays for fragmentation.
-    splits = spark.sql(q_filter).rdd.getNumPartitions()
+    # Split count is the number of combined scan tasks Iceberg plans, which is
+    # the cost the planner actually pays for fragmentation.
+    iceberg_plan_ms, splits = iceberg_scan_planning(spark, table, reps)
 
     return {
         "target_files": target,
@@ -175,6 +200,7 @@ def measure_point(spark, table, rows, state, target, reps, meta):
         "meta_bytes": metadata_bytes(spark, table),
         "state": state,
         "rows": rows,
+        "iceberg_plan_ms": iceberg_plan_ms,
         "plan_ms": measure_planning(spark, q_filter, reps),
         "agg_ms": measure(spark, q_agg, reps),
         "filter_ms": measure(spark, q_filter, reps),
@@ -211,7 +237,8 @@ def main():
         row = measure_point(spark, table, args.rows, "uncompacted", target, args.reps, meta)
         results.append(row)
         print(f"  uncompacted: files={row['actual_files']} splits={row['splits']} "
-              f"plan={row['plan_ms']}ms meta={row['meta_bytes']}B", flush=True)
+              f"iceberg_plan={row['iceberg_plan_ms']}ms explain={row['plan_ms']}ms "
+              f"meta={row['meta_bytes']}B", flush=True)
 
         compact_start = time.time()
         spark.sql(f"CALL {CATALOG}.system.rewrite_data_files(table => '{NAMESPACE}.orders_e1_f{target}')")
@@ -222,7 +249,8 @@ def main():
         row["compact_ms"] = compact_ms
         results.append(row)
         print(f"  compacted:   files={row['actual_files']} splits={row['splits']} "
-              f"plan={row['plan_ms']}ms meta={row['meta_bytes']}B compaction={compact_ms}ms", flush=True)
+              f"iceberg_plan={row['iceberg_plan_ms']}ms explain={row['plan_ms']}ms "
+              f"meta={row['meta_bytes']}B compaction={compact_ms}ms", flush=True)
 
         if not args.keep_tables:
             spark.sql(f"DROP TABLE IF EXISTS {table} PURGE")
