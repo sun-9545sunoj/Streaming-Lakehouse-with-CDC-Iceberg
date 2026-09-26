@@ -1,0 +1,136 @@
+Hive Session ID = 31757de1-508e-43e9-8f64-2c822fda98d3
+Hive Session ID = b7870428-93e6-4ac8-a40d-aa1464c33683
+OK
+Time taken: 0.461 seconds
+OK
+Time taken: 0.011 seconds
+OK
+Time taken: 0.249 seconds
+OK
+Time taken: 0.197 seconds
+Query ID = vivek_20260926181717_cf91f03c-97f4-4897-a426-03b897bd7599
+Total jobs = 2
+Launching Job 1 out of 2
+Number of reduce tasks determined at compile time: 4
+Job running in-process (local Hadoop)
+Ended Job = job_local1968808615_0001
+Loading data to table lakehouse_cmp.orders_acid
+Launching Job 2 out of 2
+Number of reduce tasks determined at compile time: 1
+Job running in-process (local Hadoop)
+Ended Job = job_local1336427423_0002
+MapReduce Jobs Launched: 
+Stage-Stage-1:  HDFS Read: 0 HDFS Write: 3554 SUCCESS
+Stage-Stage-3:  HDFS Read: 0 HDFS Write: 4512 SUCCESS
+Total MapReduce CPU Time Spent: 0 msec
+OK
+Time taken: 3.907 seconds
+Query ID = vivek_20260926181721_7c13c038-75f2-403a-83dd-954b64cf7d36
+Total jobs = 1
+Launching Job 1 out of 1
+Number of reduce tasks determined at compile time: 4
+Job running in-process (local Hadoop)
+Ended Job = job_local592761162_0003
+Loading data to table lakehouse_cmp.orders_acid
+MapReduce Jobs Launched: 
+Stage-Stage-1:  HDFS Read: 14521 HDFS Write: 15824 SUCCESS
+Total MapReduce CPU Time Spent: 0 msec
+OK
+Time taken: 1.449 seconds
+Query ID = vivek_20260926181723_e916c4e8-b32f-41e3-b7da-115cb55a2daf
+Total jobs = 1
+Launching Job 1 out of 1
+Number of reduce tasks determined at compile time: 4
+Job running in-process (local Hadoop)
+Ended Job = job_local2101116119_0004
+Loading data to table lakehouse_cmp.orders_acid
+MapReduce Jobs Launched: 
+Stage-Stage-1:  HDFS Read: 51447 HDFS Write: 31008 SUCCESS
+Total MapReduce CPU Time Spent: 0 msec
+OK
+Time taken: 2.416 seconds
+OK
+Time taken: 0.091 seconds
+OK
+Time taken: 0.043 seconds
+Query ID = vivek_20260926181725_9a246584-0cac-46e2-9849-c717b9093b97
+Total jobs = 3
+Launching Job 1 out of 3
+Number of reduce tasks determined at compile time: 1
+Job running in-process (local Hadoop)
+Ended Job = job_local1821217430_0005
+Stage-4 is selected by condition resolver.
+Stage-3 is filtered out by condition resolver.
+Stage-5 is filtered out by condition resolver.
+Moving data to directory hdfs://localhost:9000/user/hive/warehouse/lakehouse_cmp.db/cdc_batch/.hive-staging_hive_2026-09-26_18-17-25_571_162092166281299173-1/-ext-10000
+Loading data to table lakehouse_cmp.cdc_batch
+MapReduce Jobs Launched: 
+Stage-Stage-1:  HDFS Read: 16642 HDFS Write: 10854 SUCCESS
+Total MapReduce CPU Time Spent: 0 msec
+OK
+Time taken: 1.503 seconds
+Query ID = vivek_20260926181727_8e72aef2-26de-45f5-8267-830a1615e68e
+Total jobs = 6
+Launching Job 1 out of 6
+Number of reduce tasks not specified. Estimated from input data size: 1
+Job running in-process (local Hadoop)
+Ended Job = job_local1258696128_0006
+Launching Job 2 out of 6
+Number of reduce tasks determined at compile time: 4
+Job running in-process (local Hadoop)
+Ended Job = job_local172667877_0007
+Launching Job 3 out of 6
+Number of reduce tasks determined at compile time: 4
+Job running in-process (local Hadoop)
+Ended Job = job_local195666713_0008
+Launching Job 4 out of 6
+Number of reduce tasks determined at compile time: 1
+Job running in-process (local Hadoop)
+Ended Job = job_local1334277845_0009
+Launching Job 5 out of 6
+Number of reduce tasks determined at compile time: 4
+Job running in-process (local Hadoop)
+Ended Job = job_local1790930010_0010
+Loading data to table lakehouse_cmp.orders_acid
+Loading data to table lakehouse_cmp.orders_acid
+Loading data to table lakehouse_cmp.merge_tmp_table
+Loading data to table lakehouse_cmp.orders_acid
+Launching Job 6 out of 6
+Number of reduce tasks determined at compile time: 1
+Job running in-process (local Hadoop)
+Ended Job = job_local304285128_0011
+MapReduce Jobs Launched: 
+Stage-Stage-4:  HDFS Read: 70960 HDFS Write: 27135 SUCCESS
+Stage-Stage-5:  HDFS Read: 78275 HDFS Write: 28467 SUCCESS
+Stage-Stage-7:  HDFS Read: 78275 HDFS Write: 36393 SUCCESS
+Stage-Stage-9:  HDFS Read: 31310 HDFS Write: 16987 SUCCESS
+Stage-Stage-11:  HDFS Read: 78275 HDFS Write: 47079 SUCCESS
+Stage-Stage-13:  HDFS Read: 31310 HDFS Write: 19432 SUCCESS
+Total MapReduce CPU Time Spent: 0 msec
+OK
+Time taken: 7.924 seconds
+Query ID = vivek_20260926181735_cd1cd2e6-d97c-4cda-a239-11b5eab50221
+Total jobs = 1
+Launching Job 1 out of 1
+Number of reduce tasks determined at compile time: 1
+Job running in-process (local Hadoop)
+Ended Job = job_local223741381_0012
+MapReduce Jobs Launched: 
+Stage-Stage-1:  HDFS Read: 155776 HDFS Write: 58296 SUCCESS
+Total MapReduce CPU Time Spent: 0 msec
+OK
+ORD-3	DELIVERED	300.00	east
+ORD-4	PLACED	400.00	west
+Time taken: 1.3 seconds, Fetched: 2 row(s)
+Found 8 items
+drwxr-xr-x   - vivek supergroup          0 2026-09-26 18:17 /user/hive/warehouse/lakehouse_cmp.db/orders_acid/delete_delta_0000002_0000002_0000
+drwxr-xr-x   - vivek supergroup          0 2026-09-26 18:17 /user/hive/warehouse/lakehouse_cmp.db/orders_acid/delete_delta_0000003_0000003_0000
+drwxr-xr-x   - vivek supergroup          0 2026-09-26 18:17 /user/hive/warehouse/lakehouse_cmp.db/orders_acid/delete_delta_0000004_0000004_0000
+drwxr-xr-x   - vivek supergroup          0 2026-09-26 18:17 /user/hive/warehouse/lakehouse_cmp.db/orders_acid/delete_delta_0000004_0000004_0002
+drwxr-xr-x   - vivek supergroup          0 2026-09-26 18:17 /user/hive/warehouse/lakehouse_cmp.db/orders_acid/delta_0000001_0000001_0000
+drwxr-xr-x   - vivek supergroup          0 2026-09-26 18:17 /user/hive/warehouse/lakehouse_cmp.db/orders_acid/delta_0000002_0000002_0000
+drwxr-xr-x   - vivek supergroup          0 2026-09-26 18:17 /user/hive/warehouse/lakehouse_cmp.db/orders_acid/delta_0000004_0000004_0001
+drwxr-xr-x   - vivek supergroup          0 2026-09-26 18:17 /user/hive/warehouse/lakehouse_cmp.db/orders_acid/delta_0000004_0000004_0002
+OK
+CompactionId	Database	Table	Partition	Type	State	Worker	Start Time	Duration(ms)	HadoopJobId
+Time taken: 0.019 seconds, Fetched: 1 row(s)

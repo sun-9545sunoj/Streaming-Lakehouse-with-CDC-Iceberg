@@ -23,13 +23,23 @@ services:
     image: clickhouse/clickhouse-server:latest
     container_name: clickhouse-server
     ports:
-      - "8123:8123"
-      - "9001:9000"
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9001:9000"
+    # Recent images refuse network logins for the passwordless default user
+    # without this; the ports above are bound to localhost only.
+    environment:
+      CLICKHOUSE_SKIP_USER_SETUP: "1"
     ulimits:
       nofile:
         soft: 262144
         hard: 262144
-    # HDFS runs on the host; the container reaches it via host.docker.internal.
+    # HDFS runs on the host. The NameNode advertises the DataNode as 127.0.0.1,
+    # so hdfs.xml makes the client dial the DataNode's hostname, mapped to the
+    # host here. Set DATANODE_HOST to the "Hostname:" line of
+    # `hdfs dfsadmin -report` (scripts/start_clickhouse.sh detects it).
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      - "${DATANODE_HOST:-mac}:host-gateway"
+    volumes:
+      - ./clickhouse/hdfs.xml:/etc/clickhouse-server/config.d/hdfs.xml:ro
     mem_limit: 2g

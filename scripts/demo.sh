@@ -156,8 +156,21 @@ case "$STEP" in
 8)
     banner
     docker ps --format '{{.Names}}' | grep -qx clickhouse-server || bash scripts/start_clickhouse.sh
-    run "$PY" src/query_clickhouse.py --mode "${CH_MODE:-iceberg}"
+    [ -f "$LOG_DIR/ingest.pid" ] && kill "$(cat "$LOG_DIR/ingest.pid")" 2>/dev/null
+    [ -f "$LOG_DIR/producer.pid" ] && kill "$(cat "$LOG_DIR/producer.pid")" 2>/dev/null
+    # Hive's reader cannot decode zstd on macOS (see scripts/hive/read_iceberg.hql).
+    "$PY" src/demo_query.py "ALTER TABLE {t} SET TBLPROPERTIES ('write.parquet.compression-codec'='gzip')" \
+        "CALL lh.system.rewrite_data_files(table => 'e3.orders_kafka', options => map('rewrite-all','true'))" > /dev/null 2>&1
+    echo "--- Engine 1: Spark ---"
     sql "SELECT region, count(*) AS total_orders, sum(amount) AS total_revenue FROM {t} GROUP BY region ORDER BY total_revenue DESC"
+    echo "--- Engine 2: ClickHouse (icebergHDFS, no copy) ---"
+    run "$PY" src/query_clickhouse.py --mode "${CH_MODE:-iceberg}"
+    echo "--- Engine 3: Hive CLI (location-based Iceberg table) ---"
+    docker stop clickhouse-server > /dev/null
+    ( source "$HOME/hive/hive-env.sh" \
+      && HIVE_AUX_JARS_PATH="$HOME/hive/auxlib/iceberg-hive-runtime-1.6.1.jar" \
+         hive -f "$PROJECT_DIR/scripts/hive/read_iceberg.hql" 2>&1 \
+      | grep -vE "^SLF4J|WARN|log4j|^$|^Time taken|^OK$" | tail -4 )
     ;;
 9)
     banner

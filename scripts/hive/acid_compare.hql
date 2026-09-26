@@ -8,6 +8,12 @@
 -- delta_ or delete_delta_ directory that readers must merge until a compaction
 -- runs, and there is no snapshot to time-travel or roll back to.
 
+-- YARN is not running (Spark uses local[4]); run MapReduce inside the CLI JVM.
+SET mapreduce.framework.name = local;
+-- MERGE otherwise plans a map join whose hash-table build runs in a separate
+-- local task that fails under this setup (MapredLocalTask, return code 2).
+SET hive.auto.convert.join = false;
+
 CREATE DATABASE IF NOT EXISTS lakehouse_cmp;
 USE lakehouse_cmp;
 

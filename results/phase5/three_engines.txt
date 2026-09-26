@@ -1,0 +1,21 @@
+# Same Iceberg table (lh.e3.orders_kafka, HadoopCatalog on HDFS), same query, three engines.
+# Run 2026-09-26. Snapshot 2259036338219208945 before the gzip rewrite; 2,994 rows.
+# SELECT region, count(*), sum(amount) FROM <table> GROUP BY region ORDER BY 3 DESC
+
+## Spark 3.5.0 + Iceberg 1.10.0 (src/demo_query.py)
+west   765  1954193.05
+south  770  1934091.09
+east   744  1798098.87
+north  715  1752902.84
+
+## ClickHouse 26.9.2.8, icebergHDFS() over host HDFS (src/query_clickhouse.py --mode iceberg)
+west   765  1954193.05
+south  770  1934091.09
+east   744  1798098.87
+north  715  1752902.84
+
+## Hive 3.1.3 CLI, iceberg-hive-runtime 1.6.1, location-based table (scripts/hive/read_iceberg.hql)
+west   765  1954193.05
+south  770  1934091.09
+east   744  1798098.87
+north  715  1752902.84
