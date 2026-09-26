@@ -12,7 +12,7 @@ export JAVA_HOME="${JAVA_HOME_17:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.j
 # A Spark source checkout also lives on this machine. If its SPARK_HOME leaks in
 # from the shell, pyspark loads that build instead of the pinned 3.5 wheel and
 # the Iceberg 3.5_2.12 runtime fails to resolve.
-unset SPARK_HOME SPARK_CONF_DIR
+unset SPARK_HOME SPARK_CONF_DIR PYTHONPATH
 export PYSPARK_PYTHON="$PROJECT_DIR/.venv/bin/python"
 export PYSPARK_DRIVER_PYTHON="$PROJECT_DIR/.venv/bin/python"
 export PYTHONUNBUFFERED=1
