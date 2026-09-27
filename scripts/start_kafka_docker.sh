@@ -1,14 +1,30 @@
 #!/bin/bash
+# Single-node Kafka in KRaft mode (no ZooKeeper), topic orders.cdc with 3 partitions.
+#
+# Uses the official apache/kafka image, whose CLI lives at /opt/kafka/bin - the
+# path bench/e3_chaos.sh calls. The earlier version ran bitnami/kafka, whose CLI
+# is at /opt/bitnami/kafka/bin, so every E3 topic reset failed.
 set -e
 
-# Run Bitnami Kafka in KRaft mode (no zookeeper needed)
-echo "Starting Kafka container..."
-docker run -d --name kafka -p 9092:9092 -e KAFKA_ENABLE_KRAFT=yes -e KAFKA_CFG_PROCESS_ROLES=broker,controller -e KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER -e KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 -e KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT -e KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://127.0.0.1:9092 -e KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@127.0.0.1:9093 -e KAFKA_KRAFT_CLUSTER_ID=LelM2dIFQkiUFvXCEcqRWA bitnami/kafka:3.8.0
+IMAGE="apache/kafka:3.8.0"
 
-echo "Waiting for Kafka to start..."
-sleep 10
+if docker ps -a --format '{{.Names}}' | grep -qx kafka; then
+    echo "Container 'kafka' exists, starting it..."
+    docker start kafka >/dev/null
+else
+    echo "Starting Kafka container ($IMAGE)..."
+    # The image defaults to a combined broker+controller KRaft node advertising
+    # PLAINTEXT://localhost:9092, which is what the host-side Spark job needs.
+    docker run -d --name kafka -p 9092:9092 "$IMAGE" >/dev/null
+fi
 
-echo "Creating topic 'orders.cdc'..."
-docker exec kafka /opt/bitnami/kafka/bin/kafka-topics.sh --create --topic orders.cdc --partitions 3 --replication-factor 1 --bootstrap-server 127.0.0.1:9092 --if-not-exists
+echo "Waiting for the broker..."
+until docker exec kafka /opt/kafka/bin/kafka-topics.sh --list \
+        --bootstrap-server localhost:9092 >/dev/null 2>&1; do
+    sleep 2
+done
 
-echo "Kafka started and topic created!"
+docker exec kafka /opt/kafka/bin/kafka-topics.sh --create --topic orders.cdc \
+    --partitions 3 --replication-factor 1 --bootstrap-server localhost:9092 --if-not-exists
+
+echo "Kafka ready on localhost:9092, topic orders.cdc"

@@ -14,7 +14,7 @@ from spark_session import build_session, table_id
 
 RESULT_FIELDS = [
     "trial", "seed", "kills", "expected_rows", "actual_rows", "duplicates",
-    "missing", "mismatched", "resurrected", "snapshots", "recovery_seconds",
+    "missing", "mismatched", "resurrected", "unexpected", "snapshots", "recovery_seconds",
     "checkpoint_enabled", "passed",
 ]
 
@@ -58,8 +58,13 @@ def main():
     spark.sparkContext.setLogLevel("ERROR")
     table = table_id(args.table)
 
+    # Format the timestamp in SQL. Collecting a TimestampType yields a naive
+    # datetime in the driver's local zone (IST on the dev Mac), which then never
+    # matches the producer's UTC string. The session zone is pinned to UTC in
+    # spark_session.py, so this renders the stored instant in UTC.
     rows = spark.sql(
-        f"SELECT order_id, status, amount, updated_at FROM {table}"
+        f"SELECT order_id, status, amount, "
+        f"date_format(updated_at, \"yyyy-MM-dd'T'HH:mm:ss\") AS updated_at FROM {table}"
     ).collect()
 
     actual = {}
@@ -89,8 +94,14 @@ def main():
     # check a pipeline that drops every 'd' event still reports a clean run.
     resurrected = sum(1 for order_id in deleted_ids if order_id in actual)
 
+    # Keys the producer never created in this run, e.g. replayed from a topic
+    # that was not emptied. Without this a table with extra rows still passes.
+    unexpected = sum(1 for order_id in actual
+                     if order_id not in expected and order_id not in deleted_ids)
+
     snapshots = spark.sql(f"SELECT count(*) FROM {table}.snapshots").collect()[0][0]
-    passed = (duplicates == 0 and missing == 0 and mismatched == 0 and resurrected == 0)
+    passed = (duplicates == 0 and missing == 0 and mismatched == 0
+              and resurrected == 0 and unexpected == 0)
 
     result = {
         "trial": args.trial,
@@ -102,6 +113,7 @@ def main():
         "missing": missing,
         "mismatched": mismatched,
         "resurrected": resurrected,
+        "unexpected": unexpected,
         "snapshots": snapshots,
         "recovery_seconds": round(args.recovery_seconds, 2),
         "checkpoint_enabled": args.checkpoint_enabled,

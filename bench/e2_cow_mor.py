@@ -75,16 +75,29 @@ def table_name(mode, p_pct):
 
 
 def base_rows(spark, rows):
-    """The starting dataset. Deterministic, so both tables are byte-identical."""
+    """The starting dataset. Deterministic, so both tables are byte-identical.
+
+    Column values are derived from crc32 hashes of the row id so they look like
+    real orders to the Parquet encoder. An earlier version used constants and
+    small cycles (one status, one currency, one timestamp, amount = id % 100);
+    Parquet compressed 100k such rows to ~62 KB, at which size a copy-on-write
+    rewrite of the whole table is free and the experiment cannot show the
+    tradeoff it exists to measure.
+    """
+    def h(tag):
+        return f"crc32(concat('{tag}', cast(id as string)))"
+
     return spark.range(rows).selectExpr(
         "concat('ORD-', cast(id as string)) as order_id",
-        "concat('CUST-', cast(id % 1000 as string)) as customer_id",
-        "'PLACED' as status",
-        "cast(id % 100 as decimal(12,2)) as amount",
-        "'INR' as currency",
+        f"concat('CUST-', cast(pmod({h('c')}, 50000) as string)) as customer_id",
+        f"element_at(array('PLACED','PAID','SHIPPED','DELIVERED','CANCELLED','REFUNDED'), "
+        f"cast(pmod({h('s')}, 6) + 1 as int)) as status",
+        f"cast(pmod({h('a')}, 500000) / 100 as decimal(12,2)) as amount",
+        f"element_at(array('INR','USD','EUR'), cast(pmod({h('k')}, 3) + 1 as int)) as currency",
         "CASE WHEN id % 4 = 0 THEN 'north' WHEN id % 4 = 1 THEN 'south'"
         "     WHEN id % 4 = 2 THEN 'east' ELSE 'west' END as region",
-        "timestamp'2026-09-01 00:00:00' as updated_at",
+        # 2026-09-01T00:00:00Z plus up to 30 days
+        f"timestamp_seconds(1788220800 + pmod({h('t')}, 2592000)) as updated_at",
     )
 
 
@@ -264,7 +277,7 @@ def run_sweep(spark, rows, p_pct, rounds, meta):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--rows", type=int, default=100000)
+    parser.add_argument("--rows", type=int, default=2_000_000)
     parser.add_argument("--rounds", type=int, default=20)
     parser.add_argument("--pct", type=float, action="append",
                         help="update ratio in percent; repeatable. Default: 0.1 1 5 20")

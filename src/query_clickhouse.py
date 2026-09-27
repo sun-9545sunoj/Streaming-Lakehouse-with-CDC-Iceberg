@@ -18,7 +18,10 @@ import argparse
 
 import clickhouse_connect
 
-DEFAULT_TABLE_PATH = "hdfs://host.docker.internal:9000/warehouse/default.db/orders_kafka"
+# The E3 table under the HadoopCatalog (E3_CATALOG=hadoop): warehouse/e3, then
+# namespace e3, then the table. The HiveCatalog layout is
+# warehouse/default.db/orders_kafka - pass it with --table-path.
+DEFAULT_TABLE_PATH = "hdfs://host.docker.internal:9000/warehouse/e3/e3/orders_kafka"
 
 QUERY_TEMPLATE = """
 SELECT region, count(*) as total_orders, sum(amount) as total_revenue

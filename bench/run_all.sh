@@ -16,11 +16,11 @@ export PYSPARK_PYTHON="$PROJECT_DIR/.venv/bin/python"
 export PYSPARK_DRIVER_PYTHON="$PROJECT_DIR/.venv/bin/python"
 export PYTHONUNBUFFERED=1
 export SPARK_LOCAL_IP="${SPARK_LOCAL_IP:-127.0.0.1}"
-unset SPARK_HOME SPARK_CONF_DIR
+unset SPARK_HOME SPARK_CONF_DIR PYTHONPATH
 
 PYTHON="$PROJECT_DIR/.venv/bin/python"
 E1_ROWS="${E1_ROWS:-5000000}"
-E2_ROWS="${E2_ROWS:-100000}"
+E2_ROWS="${E2_ROWS:-2000000}"
 E2_ROUNDS="${E2_ROUNDS:-20}"
 
 echo "=== E1: planning cost vs file count (rows=$E1_ROWS) ==="

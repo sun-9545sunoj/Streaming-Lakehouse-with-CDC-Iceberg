@@ -18,22 +18,27 @@ export PYSPARK_DRIVER_PYTHON="$PROJECT_DIR/.venv/bin/python"
 export PYTHONUNBUFFERED=1
 export SPARK_LOCAL_IP="${SPARK_LOCAL_IP:-127.0.0.1}"
 export HADOOP_USER_NAME="${HADOOP_USER_NAME:-$(whoami)}"
-unset SPARK_HOME SPARK_CONF_DIR
+unset SPARK_HOME SPARK_CONF_DIR PYTHONPATH
 
 PYTHON="$PROJECT_DIR/.venv/bin/python"
 TRIALS="${TRIALS:-20}"
 EVENTS="${EVENTS:-10000}"
 TABLE="${TABLE:-orders_kafka}"
 RESULTS="results/e3/failure_trials.csv"
+STARTING_OFFSETS="${STARTING_OFFSETS:-earliest}"
 BROKEN_FLAG=""
 
 if [ "${BROKEN_CONTROL:-0}" = "1" ]; then
     # SPEC 9.3 requires showing what the failure looks like when it is NOT
-    # exactly-once. This arm restarts from a throwaway checkpoint every time.
+    # exactly-once. This arm restarts from a throwaway checkpoint every time,
+    # so where a restart resumes is decided by STARTING_OFFSETS alone:
+    #   earliest - replays the whole topic after every kill
+    #   latest   - Spark's Kafka default; skips whatever arrived while down
     BROKEN_FLAG="--broken-checkpoint"
-    RESULTS="results/e3/failure_trials_broken.csv"
-    echo "RUNNING THE BROKEN CONTROL ARM - duplicates here are the expected result"
+    RESULTS="results/e3/failure_trials_broken_${STARTING_OFFSETS}.csv"
+    echo "RUNNING THE BROKEN CONTROL ARM (throwaway checkpoint, startingOffsets=$STARTING_OFFSETS)"
 fi
+INGEST_FLAGS="$BROKEN_FLAG --starting-offsets $STARTING_OFFSETS"
 
 mkdir -p results/e3
 
@@ -44,18 +49,27 @@ for trial in $(seq 1 "$TRIALS"); do
     SEED=$((1000 + trial))
 
     # 1. Clean slate: topic, ground truth, checkpoint, target table.
+    #    Topic deletion is asynchronous: create too early and it fails, after
+    #    which the producer auto-creates a 1-partition topic. Wait it out.
     docker exec kafka /opt/kafka/bin/kafka-topics.sh --delete --topic orders.cdc \
         --bootstrap-server localhost:9092 >/dev/null 2>&1 || true
+    while docker exec kafka /opt/kafka/bin/kafka-topics.sh --list \
+            --bootstrap-server localhost:9092 2>/dev/null | grep -qx orders.cdc; do
+        sleep 1
+    done
     docker exec kafka /opt/kafka/bin/kafka-topics.sh --create --topic orders.cdc \
-        --partitions 3 --replication-factor 1 --bootstrap-server localhost:9092 >/dev/null 2>&1
+        --partitions 3 --replication-factor 1 --bootstrap-server localhost:9092 >/dev/null 2>&1 \
+        || { echo "topic create failed, aborting trial $trial"; continue; }
 
     rm -f data/ledger_e3.jsonl data/expected_state_e3.json
     "$PYTHON" src/reset_e3.py --table "$TABLE" || {
         echo "reset failed, aborting trial $trial"; continue;
     }
 
-    # 2. Producer streams a fixed, seeded workload in the background.
-    "$PYTHON" src/producer_kafka.py --rate 100 --interval 0.5 \
+    # 2. Producer streams a fixed, seeded workload in the background. At the
+    #    default 50 events per 0.5 s, 10000 events take ~100 s, long enough for
+    #    several kill/restart cycles.
+    "$PYTHON" src/producer_kafka.py --rate "${PRODUCER_RATE:-50}" --interval 0.5 \
         --max-events "$EVENTS" --seed "$SEED" > /tmp/e3_producer.log 2>&1 &
     PROD_PID=$!
 
@@ -64,11 +78,21 @@ for trial in $(seq 1 "$TRIALS"); do
 
     # 3. Chaos loop: run the ingest, kill it mid-batch, restart from checkpoint.
     while kill -0 $PROD_PID 2>/dev/null; do
-        "$PYTHON" src/ingest_kafka.py --table "$TABLE" $BROKEN_FLAG > /tmp/e3_ingest.log 2>&1 &
+        "$PYTHON" src/ingest_kafka.py --table "$TABLE" $INGEST_FLAGS > /tmp/e3_ingest.log 2>&1 &
         INGEST_PID=$!
 
-        SLEEP_TIME=$(( (RANDOM % 10) + 3 ))
-        echo "  ingest running for ${SLEEP_TIME}s..."
+        # Spark takes ~15 s to start. A fixed sleep from launch mostly killed the
+        # JVM before its first MERGE, which tests nothing. Wait until this
+        # incarnation has committed a batch, then kill at a random point inside
+        # the next 5 s trigger window so the kill lands mid-batch.
+        WAITED=0
+        while kill -0 $INGEST_PID 2>/dev/null && [ $WAITED -lt 90 ] \
+                && ! grep -q "Merged batch" /tmp/e3_ingest.log; do
+            sleep 1
+            WAITED=$((WAITED + 1))
+        done
+        SLEEP_TIME=$(( RANDOM % 5 ))
+        echo "  first batch after ${WAITED}s, killing in ${SLEEP_TIME}s..."
         sleep "$SLEEP_TIME"
 
         if kill -0 $INGEST_PID 2>/dev/null; then
@@ -79,12 +103,14 @@ for trial in $(seq 1 "$TRIALS"); do
         fi
     done
 
-    # 4. Drain whatever the kills left behind. Streaming never exits on its own,
-    #    so this last pass is time-boxed.
+    # 4. Drain whatever the kills left behind. --drain uses an availableNow
+    #    trigger, so the job exits once it has consumed every offset in the
+    #    topic. macOS ships no `timeout`, and the old `timeout ... || true`
+    #    turned "command not found" into a silently skipped drain.
     echo "  producer done, draining the topic..."
     DRAIN_START=$(date +%s)
-    timeout "${DRAIN_TIMEOUT:-60}" "$PYTHON" src/ingest_kafka.py --table "$TABLE" $BROKEN_FLAG \
-        > /tmp/e3_ingest.log 2>&1 || true
+    "$PYTHON" src/ingest_kafka.py --table "$TABLE" $INGEST_FLAGS --drain \
+        > /tmp/e3_ingest.log 2>&1 || echo "  WARNING: drain exited non-zero, see /tmp/e3_ingest.log"
     RECOVERY=$(( $(date +%s) - DRAIN_START ))
 
     # 5. Verify against ground truth. Exit code is the pass/fail for this trial.

@@ -39,8 +39,134 @@ This document serves as the master engineering log for the Streaming Lakehouse C
 
 ### B. The "Small File Problem" (E1 Benchmark)
 **Challenge:** Streaming CDC naturally produces thousands of tiny files over time.
-**Resolution:** Our Experiment 1 (E1) benchmark explicitly tracked query planning time as file counts increased from 10 to 5,000. We mathematically proved that planning time degrades non-linearly. By running Iceberg's `rewrite_data_files` (Compaction), we demonstrated planning time dropping from ~30ms down to ~9ms.
+**Resolution:** Experiment 1 (E1) holds 5,000,000 rows constant and varies the file count from 9 to 4,389 (targets 10 to 5,000).
+
+**Correction (2026-09-26):** An earlier version of this entry said planning time "degrades non-linearly" and fell from ~30 ms to ~9 ms after compaction. That claim is withdrawn. The harness behind it only ever produced 3-47 files for targets of 10-5000, and it timed Spark `EXPLAIN` of a `count(*)`, which Iceberg answers from manifest statistics. The rerun (`results/e1/planning_vs_files.csv`) measured this:
+- Iceberg scan planning (`planTasks`) grew roughly linearly, from 1.9 ms to 6.6 ms over 44 to 4,389 files. That is small at this scale, because a single-commit table keeps all file entries in one or two manifests.
+- The real cost of small files is execution. A full-scan GROUP BY went from 292 ms to 2,528 ms and a point lookup from 113 ms to 1,841 ms, bending upward between 500 and 1,000 files (below ~10k rows per file).
+- Compaction restored the point lookup (~180 ms). It overshot on the GROUP BY: 4 files meant 1 scan task on 4 cores, ~550 ms.
+
+See `docs/REPORT.md` section 4.
 
 ### C. Exactly-Once Resilience (E3 Chaos Testing)
 **Challenge:** Proving that the system doesn't lose or duplicate data when crashing.
-**Resolution:** We built an automated chaos harness that rapidly executed `kill -9` on the PySpark driver. Because Iceberg snapshot commits are atomic, and Spark Structured Streaming perfectly synchronizes its checkpoint offsets with the commit, our `verify.py` script proved 0 duplicates and 0 missing rows across 20 destructive trials.
+**Resolution:** We built an automated chaos harness that runs `kill -9` on the PySpark driver in the middle of micro-batches.
+
+**Correction (2026-09-26):** An earlier version of this entry described the mechanism wrongly and cited 20 passing trials with no CSV in the repo to back them.
+- Structured Streaming does *not* commit Kafka offsets atomically with the Iceberg commit. It writes the batch's offsets to the checkpoint before running it, and marks the batch committed only after `foreachBatch` returns. A kill between Iceberg's commit and that marker replays the batch on restart.
+- Exactly-once therefore comes from two properties together: at-least-once replay from the checkpoint, and an idempotent sink. `MERGE INTO` keyed on `order_id` with latest-event-wins produces the same table when the same batch is applied twice.
+- The trial results are in `results/e3/failure_trials.csv` and `docs/REPORT.md` section 6.
+
+---
+
+## 6. Decisions from the final benchmark runs (2026-09-21 to 2026-09-26)
+
+### 2026-09-21 - Catalog: HadoopCatalog on HDFS for the measured runs
+
+**Context:** Iceberg needs a catalog. Hive Metastore 3.1.3 backed by Derby is already
+installed, but Derby is single-writer and currently used embedded.
+**Decision:** The phases 1-5 prototype used HiveCatalog through a Thrift metastore running
+in a teammate's Docker Hadoop container. Every measured run (E1, E2, E3) uses Iceberg
+`HadoopCatalog` on native HDFS: `lh` catalog, warehouse `hdfs://localhost:9000/warehouse/<exp>`.
+**Why:** In the prototype, the metastore's Derby lock caused hung `DROP TABLE` / `CREATE TABLE`
+calls after a crashed job (section 5A above). The workaround was renaming tables
+(`orders_cow2`, ...), and that workaround produced the `orders_cow22` / `orders_cow2` typo
+that stopped E2 from ever completing. E3 kills the driver on purpose twenty times per run,
+and a catalog that can wedge after a kill would test the metastore, not Iceberg.
+HadoopCatalog commits by atomic rename on HDFS and has no extra process to wedge.
+The HiveCatalog path is kept runnable (`E3_CATALOG=hive`, `scripts/start_metastore.sh`,
+`conf/hive-site.xml`).
+**Cost:** Hive is no longer the catalog. The third engine reaches the table as a
+location-based Iceberg table (`scripts/hive/read_iceberg.hql`) instead of by name.
+**Revisit if:** multiple writers need to commit to the same table. HadoopCatalog is only safe
+with one writer per table.
+
+---
+
+### 2026-09-26 - E1 measures planning with Iceberg planTasks, not Spark EXPLAIN
+
+**Context:** The first E1 harness timed `EXPLAIN SELECT count(*) ... WHERE region='north'`
+and read the split count off that query's RDD.
+**Decision:** Time `table.newScan().planTasks()` on the JVM (drained with `Iterables.size`,
+one py4j call per rep), and count splits from the same call. EXPLAIN is kept as a
+secondary column.
+**Why:** The count query's RDD is the post-aggregate result, so it always reported 1
+partition. Iceberg answers `count(*)` from manifest statistics (aggregate pushdown), and
+Spark plans input partitions lazily, so EXPLAIN never exercised file planning at all.
+The filtered `count(*)` also stays at ~15 ms at every file count in the results, which
+confirms the pushdown.
+
+---
+
+### 2026-09-26 - E3 kills only after the incarnation has merged a batch
+
+**Context:** The harness killed the driver 3-12 s after launch. Spark with `--packages`
+takes about 15 s to reach its first micro-batch.
+**Decision:** Wait until the ingest log shows `Merged batch`, then kill at a random 0-4 s
+offset, inside the next 5 s trigger window. The producer was slowed to 100 events/s so each
+trial has several kill cycles. The final drain uses `trigger(availableNow=True)` and exits by
+itself once caught up.
+**Why:** A kill before the first MERGE tests JVM startup, not exactly-once. The old drain used
+`timeout`, which macOS doesn't ship. The `|| true` after it turned "command not found" into
+a silently skipped drain, so every trial would have failed for a reason unrelated to
+Iceberg.
+
+---
+
+### 2026-09-26 - Hive reader pinned to iceberg-hive-runtime 1.6.1
+
+**Context:** Spark writes with Iceberg 1.10.0. `iceberg-hive-runtime` stops at 1.7.2 (Hive 3
+support was removed after that), and 1.7.x is Java 11 bytecode.
+**Decision:** Use 1.6.1, the newest Java 8 build, in `~/hive/auxlib`.
+**Why:** Hive 3.1.3's CLI only runs on Java 8 (the URLClassLoader cast). The tables are format
+v2 with no v3 features, which a 1.6 reader understands.
+
+---
+
+### 2026-09-26 - E2 base rows carry realistic entropy; 2M rows
+
+**Context:** The first E2 generator used constants and short cycles. Parquet compressed
+100,000 such rows to ~62 KB.
+**Decision:** Derive each column from crc32 of the row id, and use the 2,000,000 rows from
+SPEC section 9.2 (~30 MB of Parquet).
+**Why:** At 62 KB a copy-on-write rewrite of the whole table costs nothing, so the pilot
+measured the generator, not the table format. The pilot CSV was discarded.
+
+---
+
+### 2026-09-26 - E3 control arm split by starting offset
+
+**Context:** SPEC 9.3 asks for a broken variant. The first control used a throwaway
+checkpoint with `startingOffsets=earliest`.
+**Decision:** Run two controls: throwaway checkpoint + `earliest`, and throwaway
+checkpoint + `latest`.
+**Why:** With `earliest`, each restart replays the whole topic and the idempotent MERGE
+converges, so that control passes. On its own it would suggest the checkpoint does
+nothing. With `latest` (Spark's Kafka default), the loss the checkpoint prevents becomes
+visible. Together the two separate what the checkpoint buys (no loss) from what the keyed
+MERGE buys (no duplicates).
+
+---
+
+### 2026-09-26 - Demo table rewritten to gzip for the Hive reader
+
+**Context:** Iceberg 1.10 writes Parquet with zstd. The Hive 3 Iceberg reader decodes it
+through Hadoop's native `ZStandardCodec`, and there's no macOS libhadoop with zstd.
+**Decision:** Before the Hive read, set `write.parquet.compression-codec=gzip` and rewrite
+the data files. The E1/E2/E3 tables stay on the default codec.
+**Why:** gzip decodes in pure Java in Hadoop. Changing the codec for the measured runs would
+have changed what they measured.
+
+---
+
+### 2026-09-26 - Demo pauses the stream during maintenance
+
+**Context:** In the second demo rehearsal, `rewrite_manifests` failed with
+`ValidationException: Deleted manifest ... could not be found in the latest snapshot`. A
+streaming commit had landed while the maintenance was running. The first rehearsal passed
+only because the timing happened not to collide.
+**Decision:** `scripts/demo.sh` step 5 stops the producer and the ingest job before
+compaction and snapshot expiry.
+**Why:** Iceberg's optimistic concurrency rejects a maintenance commit whose base snapshot
+changed underneath it. A streaming table needs maintenance scheduled between commits, or
+retried.

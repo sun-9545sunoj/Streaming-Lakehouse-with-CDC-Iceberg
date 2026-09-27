@@ -1,0 +1,13 @@
+<!--
+  libhdfs3 settings for reading host HDFS from the ClickHouse container.
+
+  The NameNode advertises the DataNode by IP 127.0.0.1, which inside the
+  container is the container itself. Connecting by the DataNode's hostname
+  instead, mapped to the host with docker's add-host, reaches the real one.
+  Setting names are the Hadoop keys with dots replaced by underscores.
+-->
+<clickhouse>
+    <hdfs>
+        <dfs_client_use_datanode_hostname>true</dfs_client_use_datanode_hostname>
+    </hdfs>
+</clickhouse>
