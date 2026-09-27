@@ -1,5 +1,7 @@
 # Streaming Lakehouse: CDC from Kafka into Apache Iceberg
 
+**Team:** Vivek Gangavarapu (2023BCS0175), Ragiri Sunoj (2023BCS0178), Lella Tejasri (2023BCS0166)
+
 Every number here comes from a CSV in `results/`, produced by a script in `bench/` on
 one 16 GB Apple-silicon Mac. That covers HDFS 3.3.6, Spark 3.5.0 `local[4]`,
 Iceberg 1.10.0, Kafka 3.8.0 (KRaft) and Python 3.11. Anything taken from documentation

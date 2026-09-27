@@ -1,5 +1,7 @@
 # Streaming Lakehouse: CDC from Kafka into Apache Iceberg
 
+**Team:** Vivek Gangavarapu (2023BCS0175), Ragiri Sunoj (2023BCS0178), Lella Tejasri (2023BCS0166)
+
 CDC events stream from Kafka through Spark Structured Streaming into an Apache Iceberg
 table on HDFS, and ClickHouse queries that table in place. The pipeline is the apparatus.
 The deliverables are three measured experiments:

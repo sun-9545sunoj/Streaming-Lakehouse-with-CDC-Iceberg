@@ -1,8 +1,10 @@
 ======================================================================
  Streaming Lakehouse (CDC -> Kafka -> Spark -> Iceberg on HDFS)
  Demo step 0: Prerequisites
- Name: Vivek Gangavarapu      Roll No: 2023BCS0175
- Date: 26-09-2026 18:28:54
+ Team: Vivek Gangavarapu   2023BCS0175
+       Ragiri Sunoj        2023BCS0178
+       Lella Tejasri       2023BCS0166
+ Date: 27-09-2026 10:51:38
 ======================================================================
 
 $ bash scripts/start_hdfs.sh
@@ -32,126 +34,134 @@ Deleted checkpoint hdfs://localhost:9000/checkpoint/orders_ingest_kafka
 ======================================================================
  Streaming Lakehouse (CDC -> Kafka -> Spark -> Iceberg on HDFS)
  Demo step 1: Producer streams CDC events into Kafka
- Name: Vivek Gangavarapu      Roll No: 2023BCS0175
- Date: 26-09-2026 18:29:05
+ Team: Vivek Gangavarapu   2023BCS0175
+       Ragiri Sunoj        2023BCS0178
+       Lella Tejasri       2023BCS0166
+ Date: 27-09-2026 10:51:51
 ======================================================================
 
 $ python src/producer_kafka.py --rate 50 --interval 1 --max-events 100000 &
 $ python src/ingest_kafka.py &
-ingest_kafka.py started (pid 29620), waiting for its first batch...
+ingest_kafka.py started (pid 38296), waiting for its first batch...
 Merged batch 0.
 
 $ tail -5 producer.log
-[2026-09-26T12:59:13Z] Sent 353/100000 events to Kafka.
-[2026-09-26T12:59:14Z] Sent 399/100000 events to Kafka.
-[2026-09-26T12:59:15Z] Sent 445/100000 events to Kafka.
-[2026-09-26T12:59:16Z] Sent 490/100000 events to Kafka.
-[2026-09-26T12:59:17Z] Sent 534/100000 events to Kafka.
+[2026-09-27T05:22:00Z] Sent 378/100000 events to Kafka.
+[2026-09-27T05:22:01Z] Sent 424/100000 events to Kafka.
+[2026-09-27T05:22:02Z] Sent 467/100000 events to Kafka.
+[2026-09-27T05:22:03Z] Sent 510/100000 events to Kafka.
+[2026-09-27T05:22:04Z] Sent 556/100000 events to Kafka.
 ######## end step 1
 ======================================================================
  Streaming Lakehouse (CDC -> Kafka -> Spark -> Iceberg on HDFS)
  Demo step 2: Live table: status counts move between two queries
- Name: Vivek Gangavarapu      Roll No: 2023BCS0175
- Date: 26-09-2026 18:29:17
+ Team: Vivek Gangavarapu   2023BCS0175
+       Ragiri Sunoj        2023BCS0178
+       Lella Tejasri       2023BCS0166
+ Date: 27-09-2026 10:52:04
 ======================================================================
 
 spark-sql> SELECT status, count(*) AS orders FROM lh.e3.orders_kafka GROUP BY status ORDER BY status
 +---------+------+
 |status   |orders|
 +---------+------+
-|CANCELLED|39    |
-|DELIVERED|6     |
-|PAID     |29    |
-|PLACED   |125   |
-|REFUNDED |9     |
-|SHIPPED  |6     |
+|CANCELLED|62    |
+|DELIVERED|5     |
+|PAID     |33    |
+|PLACED   |169   |
+|REFUNDED |18    |
+|SHIPPED  |10    |
 +---------+------+
-(2.37 s)
+(2.59 s)
 ... 10 seconds later ...
 spark-sql> SELECT status, count(*) AS orders FROM lh.e3.orders_kafka GROUP BY status ORDER BY status
 +---------+------+
 |status   |orders|
 +---------+------+
-|CANCELLED|113   |
-|DELIVERED|13    |
-|PAID     |90    |
-|PLACED   |313   |
-|REFUNDED |28    |
-|SHIPPED  |18    |
+|CANCELLED|133   |
+|DELIVERED|11    |
+|PAID     |77    |
+|PLACED   |423   |
+|REFUNDED |35    |
+|SHIPPED  |21    |
 +---------+------+
-(2.45 s)
+(2.46 s)
 ######## end step 2
 ======================================================================
  Streaming Lakehouse (CDC -> Kafka -> Spark -> Iceberg on HDFS)
  Demo step 3: Row-level update: cancel one order via Kafka
- Name: Vivek Gangavarapu      Roll No: 2023BCS0175
- Date: 26-09-2026 18:29:37
+ Team: Vivek Gangavarapu   2023BCS0175
+       Ragiri Sunoj        2023BCS0178
+       Lella Tejasri       2023BCS0166
+ Date: 27-09-2026 10:52:25
 ======================================================================
 
 $ /Users/vivek/Documents/labs/streaming-lakehouse-cdc-iceberg/.venv/bin/python src/demo_cancel.py
-BEFORE  {'order_id': 'ORD-00CB193A', 'customer_id': 'CUST-7836', 'status': 'DELIVERED', 'amount': '581.61', 'currency': 'EUR', 'region': 'north', 'updated_at': '2026-09-26T12:59:15Z'}
-SENT    op=u ORD-00CB193A -> CANCELLED
-AFTER   {'order_id': 'ORD-00CB193A', 'customer_id': 'CUST-7836', 'status': 'CANCELLED', 'amount': '581.61', 'currency': 'EUR', 'region': 'north', 'updated_at': '2026-09-26T12:59:40Z'}
-Row-level update visible in Iceberg after 6.5 s
+BEFORE  {'order_id': 'ORD-021230BF', 'customer_id': 'CUST-8796', 'status': 'PLACED', 'amount': '4923.59', 'currency': 'INR', 'region': 'south', 'updated_at': '2026-09-27T05:22:03Z'}
+SENT    op=u ORD-021230BF -> CANCELLED
+AFTER   {'order_id': 'ORD-021230BF', 'customer_id': 'CUST-8796', 'status': 'CANCELLED', 'amount': '4923.59', 'currency': 'INR', 'region': 'south', 'updated_at': '2026-09-27T05:22:28Z'}
+Row-level update visible in Iceberg after 4.4 s
 
 ######## end step 3
 ======================================================================
  Streaming Lakehouse (CDC -> Kafka -> Spark -> Iceberg on HDFS)
  Demo step 4: Small files, history and snapshots
- Name: Vivek Gangavarapu      Roll No: 2023BCS0175
- Date: 26-09-2026 18:29:48
+ Team: Vivek Gangavarapu   2023BCS0175
+       Ragiri Sunoj        2023BCS0178
+       Lella Tejasri       2023BCS0166
+ Date: 27-09-2026 10:52:33
 ======================================================================
 
 spark-sql> SELECT count(*) AS live_data_files, sum(record_count) AS rows, round(avg(file_size_in_bytes)) AS avg_file_bytes FROM lh.e3.orders_kafka.files
 +---------------+----+--------------+
 |live_data_files|rows|avg_file_bytes|
 +---------------+----+--------------+
-|4              |936 |6213.0        |
+|4              |940 |6179.0        |
 +---------------+----+--------------+
-(2.02 s)
+(2.00 s)
 spark-sql> SELECT count(*) AS files_held_by_all_snapshots FROM lh.e3.orders_kafka.all_data_files
 +---------------------------+
 |files_held_by_all_snapshots|
 +---------------------------+
-|36                         |
+|32                         |
 +---------------------------+
-(0.19 s)
+(0.18 s)
 spark-sql> SELECT made_current_at, snapshot_id, parent_id FROM lh.e3.orders_kafka.history ORDER BY made_current_at DESC
 +-----------------------+-------------------+-------------------+
 |made_current_at        |snapshot_id        |parent_id          |
 +-----------------------+-------------------+-------------------+
-|2026-09-26 12:59:46.944|4810664117984609521|7824774900110981886|
-|2026-09-26 12:59:41.829|7824774900110981886|5452666068821095534|
-|2026-09-26 12:59:37.108|5452666068821095534|8359724750976826422|
-|2026-09-26 12:59:32.095|8359724750976826422|7091560747941871759|
-|2026-09-26 12:59:26.151|7091560747941871759|2947732256741607536|
-|2026-09-26 12:59:22.496|2947732256741607536|7073210974635446288|
-|2026-09-26 12:59:16.364|7073210974635446288|8354552995609082591|
-|2026-09-26 12:59:14.92 |8354552995609082591|548531221503985726 |
-|2026-09-26 12:59:11.859|548531221503985726 |NULL               |
+|2026-09-27 05:22:32.59 |358652980513394977 |1254091134004918380|
+|2026-09-27 05:22:26.262|1254091134004918380|547327351865447432 |
+|2026-09-27 05:22:22    |547327351865447432 |3542853964106760392|
+|2026-09-27 05:22:16.31 |3542853964106760392|1453843081413948475|
+|2026-09-27 05:22:11.888|1453843081413948475|3832903740907539225|
+|2026-09-27 05:22:06.529|3832903740907539225|4160826499262668491|
+|2026-09-27 05:22:01.929|4160826499262668491|9093549586262197803|
+|2026-09-27 05:21:59.591|9093549586262197803|NULL               |
 +-----------------------+-------------------+-------------------+
 (0.13 s)
 spark-sql> SELECT committed_at, snapshot_id, operation, summary['added-data-files'] AS added_files FROM lh.e3.orders_kafka.snapshots ORDER BY committed_at DESC
 +-----------------------+-------------------+---------+-----------+
 |committed_at           |snapshot_id        |operation|added_files|
 +-----------------------+-------------------+---------+-----------+
-|2026-09-26 12:59:46.944|4810664117984609521|overwrite|4          |
-|2026-09-26 12:59:41.829|7824774900110981886|overwrite|4          |
-|2026-09-26 12:59:37.108|5452666068821095534|overwrite|4          |
-|2026-09-26 12:59:32.095|8359724750976826422|overwrite|4          |
-|2026-09-26 12:59:26.151|7091560747941871759|overwrite|4          |
-|2026-09-26 12:59:22.496|2947732256741607536|overwrite|4          |
-|2026-09-26 12:59:16.364|7073210974635446288|overwrite|4          |
-|2026-09-26 12:59:14.92 |8354552995609082591|overwrite|4          |
-|2026-09-26 12:59:11.859|548531221503985726 |append   |4          |
+|2026-09-27 05:22:32.59 |358652980513394977 |overwrite|4          |
+|2026-09-27 05:22:26.262|1254091134004918380|overwrite|4          |
+|2026-09-27 05:22:22    |547327351865447432 |overwrite|4          |
+|2026-09-27 05:22:16.31 |3542853964106760392|overwrite|4          |
+|2026-09-27 05:22:11.888|1453843081413948475|overwrite|4          |
+|2026-09-27 05:22:06.529|3832903740907539225|overwrite|4          |
+|2026-09-27 05:22:01.929|4160826499262668491|overwrite|4          |
+|2026-09-27 05:21:59.591|9093549586262197803|append   |4          |
 +-----------------------+-------------------+---------+-----------+
-(0.13 s)
+(0.10 s)
 ######## end step 4
 ======================================================================
  Streaming Lakehouse (CDC -> Kafka -> Spark -> Iceberg on HDFS)
  Demo step 5: Compaction collapses the file count
- Name: Vivek Gangavarapu      Roll No: 2023BCS0175
- Date: 26-09-2026 18:29:52
+ Team: Vivek Gangavarapu   2023BCS0175
+       Ragiri Sunoj        2023BCS0178
+       Lella Tejasri       2023BCS0166
+ Date: 27-09-2026 10:52:38
 ======================================================================
 
 (pausing the stream: maintenance and streaming commits conflict)
@@ -161,31 +171,31 @@ spark-sql> SELECT count(*) AS live_files_before FROM lh.e3.orders_kafka.files
 +-----------------+
 |4                |
 +-----------------+
-(1.73 s)
+(1.82 s)
 spark-sql> SELECT count(*) AS all_snapshot_files_before FROM lh.e3.orders_kafka.all_data_files
 +-------------------------+
 |all_snapshot_files_before|
 +-------------------------+
-|40                       |
+|36                       |
 +-------------------------+
-(0.18 s)
+(0.15 s)
 spark-sql> SELECT count(*) AS snapshots_before FROM lh.e3.orders_kafka.snapshots
 +----------------+
 |snapshots_before|
 +----------------+
-|10              |
+|9               |
 +----------------+
-(0.10 s)
+(0.08 s)
 spark-sql> SELECT region, count(*), sum(amount) FROM lh.e3.orders_kafka GROUP BY region ORDER BY region
 +------+--------+-----------+
 |region|count(1)|sum(amount)|
 +------+--------+-----------+
-|east  |264     |676992.50  |
-|north |261     |646512.04  |
-|south |245     |634344.45  |
-|west  |279     |705603.31  |
+|east  |302     |761394.12  |
+|north |234     |585235.40  |
+|south |254     |673281.76  |
+|west  |267     |682367.13  |
 +------+--------+-----------+
-(0.67 s)
+(0.59 s)
 $ /Users/vivek/Documents/labs/streaming-lakehouse-cdc-iceberg/.venv/bin/python src/maintain.py --table orders_kafka --compact --expire
 Executing: CALL lh.system.rewrite_data_files(table => 'e3.orders_kafka')
 +--------------------------+----------------------+---------------------+-----------------------+--------------------------+
@@ -193,21 +203,21 @@ Executing: CALL lh.system.rewrite_data_files(table => 'e3.orders_kafka')
 +--------------------------+----------------------+---------------------+-----------------------+--------------------------+
 |0                         |0                     |0                    |0                      |0                         |
 +--------------------------+----------------------+---------------------+-----------------------+--------------------------+
-Completed in 1.40 seconds.
+Completed in 1.36 seconds.
 Executing: CALL lh.system.rewrite_manifests(table => 'e3.orders_kafka')
 +-------------------------+---------------------+
 |rewritten_manifests_count|added_manifests_count|
 +-------------------------+---------------------+
 |2                        |1                    |
 +-------------------------+---------------------+
-Completed in 1.32 seconds.
-Executing: CALL lh.system.expire_snapshots(table => 'e3.orders_kafka', older_than => TIMESTAMP '2026-09-26 18:30:04', retain_last => 1)
+Completed in 1.17 seconds.
+Executing: CALL lh.system.expire_snapshots(table => 'e3.orders_kafka', older_than => TIMESTAMP '2026-09-27 10:52:50', retain_last => 1)
 +------------------------+-----------------------------------+-----------------------------------+----------------------------+----------------------------+------------------------------+
 |deleted_data_files_count|deleted_position_delete_files_count|deleted_equality_delete_files_count|deleted_manifest_files_count|deleted_manifest_lists_count|deleted_statistics_files_count|
 +------------------------+-----------------------------------+-----------------------------------+----------------------------+----------------------------+------------------------------+
-|36                      |0                                  |0                                  |19                          |10                          |0                             |
+|32                      |0                                  |0                                  |17                          |9                           |0                             |
 +------------------------+-----------------------------------+-----------------------------------+----------------------------+----------------------------+------------------------------+
-Completed in 2.08 seconds.
+Completed in 1.93 seconds.
 
 spark-sql> SELECT count(*) AS live_files_after FROM lh.e3.orders_kafka.files
 +----------------+
@@ -215,51 +225,53 @@ spark-sql> SELECT count(*) AS live_files_after FROM lh.e3.orders_kafka.files
 +----------------+
 |4               |
 +----------------+
-(1.91 s)
+(1.77 s)
 spark-sql> SELECT count(*) AS all_snapshot_files_after FROM lh.e3.orders_kafka.all_data_files
 +------------------------+
 |all_snapshot_files_after|
 +------------------------+
 |4                       |
 +------------------------+
-(0.14 s)
+(0.12 s)
 spark-sql> SELECT count(*) AS snapshots_after FROM lh.e3.orders_kafka.snapshots
 +---------------+
 |snapshots_after|
 +---------------+
 |1              |
 +---------------+
-(0.10 s)
+(0.09 s)
 spark-sql> SELECT region, count(*), sum(amount) FROM lh.e3.orders_kafka GROUP BY region ORDER BY region
 +------+--------+-----------+
 |region|count(1)|sum(amount)|
 +------+--------+-----------+
-|east  |264     |676992.50  |
-|north |261     |646512.04  |
-|south |245     |634344.45  |
-|west  |279     |705603.31  |
+|east  |302     |761394.12  |
+|north |234     |585235.40  |
+|south |254     |673281.76  |
+|west  |267     |682367.13  |
 +------+--------+-----------+
-(0.70 s)
+(0.67 s)
 Measured curve: docs/figures/e1_planning.png
 ######## end step 5
 ======================================================================
  Streaming Lakehouse (CDC -> Kafka -> Spark -> Iceberg on HDFS)
  Demo step 6: Accidental partition delete, then rollback_to_snapshot
- Name: Vivek Gangavarapu      Roll No: 2023BCS0175
- Date: 26-09-2026 18:30:12
+ Team: Vivek Gangavarapu   2023BCS0175
+       Ragiri Sunoj        2023BCS0178
+       Lella Tejasri       2023BCS0166
+ Date: 27-09-2026 10:52:57
 ======================================================================
 
-Current snapshot before the accident: 1566300386600305896
+Current snapshot before the accident: 1824505081123751958
 spark-sql> SELECT region, count(*) FROM lh.e3.orders_kafka GROUP BY region ORDER BY region
 +------+--------+
 |region|count(1)|
 +------+--------+
-|east  |264     |
-|north |261     |
-|south |245     |
-|west  |279     |
+|east  |302     |
+|north |234     |
+|south |254     |
+|west  |267     |
 +------+--------+
-(2.19 s)
+(2.10 s)
 spark-sql> DELETE FROM lh.e3.orders_kafka WHERE region = 'north'
 ++
 ||
@@ -270,48 +282,50 @@ spark-sql> SELECT region, count(*) FROM lh.e3.orders_kafka GROUP BY region ORDER
 +------+--------+
 |region|count(1)|
 +------+--------+
-|east  |264     |
-|south |245     |
-|west  |279     |
+|east  |302     |
+|south |254     |
+|west  |267     |
 +------+--------+
-(0.15 s)
-$ /Users/vivek/Documents/labs/streaming-lakehouse-cdc-iceberg/.venv/bin/python src/maintain.py --table orders_kafka --rollback 1566300386600305896
-Executing: CALL lh.system.rollback_to_snapshot(table => 'e3.orders_kafka', snapshot_id => 1566300386600305896)
+(0.13 s)
+$ /Users/vivek/Documents/labs/streaming-lakehouse-cdc-iceberg/.venv/bin/python src/maintain.py --table orders_kafka --rollback 1824505081123751958
+Executing: CALL lh.system.rollback_to_snapshot(table => 'e3.orders_kafka', snapshot_id => 1824505081123751958)
 +--------------------+-------------------+
 |previous_snapshot_id|current_snapshot_id|
 +--------------------+-------------------+
-|1749740897970731450 |1566300386600305896|
+|7574468968859057788 |1824505081123751958|
 +--------------------+-------------------+
-Completed in 1.32 seconds.
+Completed in 1.24 seconds.
 
 spark-sql> SELECT region, count(*) FROM lh.e3.orders_kafka GROUP BY region ORDER BY region
 +------+--------+
 |region|count(1)|
 +------+--------+
-|east  |264     |
-|north |261     |
-|south |245     |
-|west  |279     |
+|east  |302     |
+|north |234     |
+|south |254     |
+|west  |267     |
 +------+--------+
-(2.19 s)
+(2.03 s)
 ######## end step 6
 ======================================================================
  Streaming Lakehouse (CDC -> Kafka -> Spark -> Iceberg on HDFS)
  Demo step 7: Chaos: kill -9 the streaming job, restart, verify
- Name: Vivek Gangavarapu      Roll No: 2023BCS0175
- Date: 26-09-2026 18:30:32
+ Team: Vivek Gangavarapu   2023BCS0175
+       Ragiri Sunoj        2023BCS0178
+       Lella Tejasri       2023BCS0166
+ Date: 27-09-2026 10:53:16
 ======================================================================
 
 $ python src/producer_kafka.py --rate 50 --interval 0.5 --max-events 3000 --seed 7 &
 $ python src/ingest_kafka.py &
-ingest_kafka.py started (pid 30157), waiting for its first batch...
+ingest_kafka.py started (pid 38780), waiting for its first batch...
 Merged batch 0.
-$ kill -9 30157      # mid-batch
+$ kill -9 38780      # mid-batch
 $ python src/ingest_kafka.py &              # restart from the same checkpoint
-ingest_kafka.py started (pid 30230), waiting for its first batch...
-scripts/demo.sh: line 68: 30157 Killed: 9               nohup "$PY" src/ingest_kafka.py > "$LOG_DIR/ingest.log" 2>&1
+ingest_kafka.py started (pid 38864), waiting for its first batch...
+scripts/demo.sh: line 70: 38780 Killed: 9               nohup "$PY" src/ingest_kafka.py > "$LOG_DIR/ingest.log" 2>&1
 Merged batch 1.
-scripts/demo.sh: line 96: 30230 Terminated: 15          nohup "$PY" src/ingest_kafka.py > "$LOG_DIR/ingest.log" 2>&1
+scripts/demo.sh: line 107: 38864 Terminated: 15          nohup "$PY" src/ingest_kafka.py > "$LOG_DIR/ingest.log" 2>&1
 $ python src/ingest_kafka.py --drain
 $ /Users/vivek/Documents/labs/streaming-lakehouse-cdc-iceberg/.venv/bin/python src/verify.py --trial 0 --kills 1 --out /var/folders/8q/7_dptpbs0477_dgcywqfv4b40000gn/T//lakehouse-demo/demo_verify.csv
 --- E3 Verification Results ---
@@ -335,8 +349,10 @@ Appended trial 0 to /var/folders/8q/7_dptpbs0477_dgcywqfv4b40000gn/T//lakehouse-
 ======================================================================
  Streaming Lakehouse (CDC -> Kafka -> Spark -> Iceberg on HDFS)
  Demo step 8: ClickHouse reads the same Iceberg table
- Name: Vivek Gangavarapu      Roll No: 2023BCS0175
- Date: 26-09-2026 18:31:27
+ Team: Vivek Gangavarapu   2023BCS0175
+       Ragiri Sunoj        2023BCS0178
+       Lella Tejasri       2023BCS0166
+ Date: 27-09-2026 10:54:11
 ======================================================================
 
 ClickHouse ready on http://localhost:8123
@@ -350,7 +366,7 @@ spark-sql> SELECT region, count(*) AS total_orders, sum(amount) AS total_revenue
 |east  |411         |980328.86    |
 |north |393         |979028.25    |
 +------+------------+-------------+
-(2.32 s)
+(2.13 s)
 --- Engine 2: ClickHouse (icebergHDFS, no copy) ---
 $ /Users/vivek/Documents/labs/streaming-lakehouse-cdc-iceberg/.venv/bin/python src/query_clickhouse.py --mode iceberg
 Querying the lakehouse from ClickHouse (iceberg mode)
@@ -373,8 +389,10 @@ north	393	979028.25
 ======================================================================
  Streaming Lakehouse (CDC -> Kafka -> Spark -> Iceberg on HDFS)
  Demo step 9: E2: where merge-on-read stops paying off
- Name: Vivek Gangavarapu      Roll No: 2023BCS0175
- Date: 26-09-2026 18:31:56
+ Team: Vivek Gangavarapu   2023BCS0175
+       Ragiri Sunoj        2023BCS0178
+       Lella Tejasri       2023BCS0166
+ Date: 27-09-2026 10:54:41
 ======================================================================
 
 $ results/e2/crossover_summary.csv (2M rows, 20 rounds, no compaction)

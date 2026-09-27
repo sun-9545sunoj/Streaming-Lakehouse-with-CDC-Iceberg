@@ -1,7 +1,7 @@
 # Screenshot set (SPEC section 12)
 
-One screenshot per demo step. Every step prints the identity banner (name, roll number,
-date) first, so each capture is self-labelled.
+One screenshot per demo step. Every step prints the team banner (all three members'
+names and roll numbers, plus the date) first, so each capture is self-labelled.
 
 ```bash
 bash scripts/demo.sh 0      # prerequisites: HDFS, Kafka, empty topic and table
@@ -20,5 +20,5 @@ bash scripts/demo.sh stop
 Steps 2-6 run against the live table from step 1, so run them in order. Step 7 resets
 the table.
 
-`demo_transcript.txt` is the full text output of the rehearsal run on 2026-09-26
+`demo_transcript.txt` is the full text output of the rehearsal run on 2026-09-27
 (steps 0-9, unattended). It is the fallback if the live cluster misbehaves.

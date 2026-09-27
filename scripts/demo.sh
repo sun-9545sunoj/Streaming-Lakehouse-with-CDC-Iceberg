@@ -45,7 +45,9 @@ banner() {
     echo "======================================================================"
     echo " Streaming Lakehouse (CDC -> Kafka -> Spark -> Iceberg on HDFS)"
     echo " Demo step $STEP: ${TITLES[$STEP]}"
-    echo " Name: Vivek Gangavarapu      Roll No: 2023BCS0175"
+    echo " Team: Vivek Gangavarapu   2023BCS0175"
+    echo "       Ragiri Sunoj        2023BCS0178"
+    echo "       Lella Tejasri       2023BCS0166"
     echo " Date: $(date '+%d-%m-%Y %H:%M:%S')"
     echo "======================================================================"
     echo
@@ -69,7 +71,16 @@ start_ingest() {
     nohup "$PY" src/ingest_kafka.py > "$LOG_DIR/ingest.log" 2>&1 &
     echo $! > "$LOG_DIR/ingest.pid"
     echo "ingest_kafka.py started (pid $(cat "$LOG_DIR/ingest.pid")), waiting for its first batch..."
-    until grep -aq "Merged batch" "$LOG_DIR/ingest.log" 2>/dev/null; do sleep 1; done
+    until grep -aq "Merged batch" "$LOG_DIR/ingest.log" 2>/dev/null; do
+        # A dead job never logs a batch; without this the demo waits forever
+        # (e.g. Docker, and with it Kafka, not running).
+        if ! kill -0 "$(cat "$LOG_DIR/ingest.pid")" 2>/dev/null; then
+            echo "ingest_kafka.py exited before its first batch - is Kafka up?"
+            grep -aE "Exception|Error" "$LOG_DIR/ingest.log" | tail -3
+            exit 1
+        fi
+        sleep 1
+    done
     grep -a "Merged batch" "$LOG_DIR/ingest.log" | tail -1
 }
 
