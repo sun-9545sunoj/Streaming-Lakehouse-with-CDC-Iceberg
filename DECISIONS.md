@@ -46,7 +46,7 @@ This document serves as the master engineering log for the Streaming Lakehouse C
 - The real cost of small files is execution. A full-scan GROUP BY went from 292 ms to 2,528 ms and a point lookup from 113 ms to 1,841 ms, bending upward between 500 and 1,000 files (below ~10k rows per file).
 - Compaction restored the point lookup (~180 ms). It overshot on the GROUP BY: 4 files meant 1 scan task on 4 cores, ~550 ms.
 
-See `docs/REPORT.md` section 4.
+See the project report, section 5.4.
 
 ### C. Exactly-Once Resilience (E3 Chaos Testing)
 **Challenge:** Proving that the system doesn't lose or duplicate data when crashing.
@@ -55,7 +55,7 @@ See `docs/REPORT.md` section 4.
 **Correction (2026-09-26):** An earlier version of this entry described the mechanism wrongly and cited 20 passing trials with no CSV in the repo to back them.
 - Structured Streaming does *not* commit Kafka offsets atomically with the Iceberg commit. It writes the batch's offsets to the checkpoint before running it, and marks the batch committed only after `foreachBatch` returns. A kill between Iceberg's commit and that marker replays the batch on restart.
 - Exactly-once therefore comes from two properties together: at-least-once replay from the checkpoint, and an idempotent sink. `MERGE INTO` keyed on `order_id` with latest-event-wins produces the same table when the same batch is applied twice.
-- The trial results are in `results/e3/failure_trials.csv` and `docs/REPORT.md` section 6.
+- The trial results are in `results/e3/failure_trials.csv` and the project report, section 5.6.
 
 ---
 
