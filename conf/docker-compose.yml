@@ -20,7 +20,7 @@ services:
     mem_limit: 1536m
 
   clickhouse:
-    image: clickhouse/clickhouse-server:latest
+    image: clickhouse/clickhouse-server:26.9.2.8
     container_name: clickhouse-server
     ports:
       - "127.0.0.1:8123:8123"

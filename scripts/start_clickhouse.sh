@@ -29,7 +29,7 @@ docker run -d --name clickhouse-server \
     --add-host "$DATANODE_HOST":host-gateway \
     -v "$PROJECT_DIR/conf/clickhouse/hdfs.xml":/etc/clickhouse-server/config.d/hdfs.xml:ro \
     --ulimit nofile=262144:262144 \
-    clickhouse/clickhouse-server:latest >/dev/null
+    clickhouse/clickhouse-server:26.9.2.8 >/dev/null
 
 until curl -s localhost:8123/ping | grep -q Ok; do sleep 1; done
 echo "ClickHouse ready on http://localhost:8123"
